@@ -12,10 +12,12 @@
 		505E539D0131A378F30F5842 /* SessionAckCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53B895AA669038786FA4D68 /* SessionAckCollector.swift */; };
 		63034A7E9AE48C3A53138DAA /* Actr in Frameworks */ = {isa = PBXBuildFile; productRef = A95A8C8034CB9187CEA299D5 /* Actr */; };
 		80389D7572F846DE20F54A7C /* actr.toml in Resources */ = {isa = PBXBuildFile; fileRef = E1FAD1A7F51376291CD2D232 /* actr.toml */; };
+		84A6689C273FAB36B09C0E18 /* probe.actor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5871CF112EE0190D3F0212 /* probe.actor.swift */; };
 		84E96B503217B5BB50E5940B /* duplex_stream.pb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EF2EB3E0B852249DA1A84C0 /* duplex_stream.pb.swift */; };
 		951C78B4515C7426A5E8EB2A /* ActrService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB04EB84F09D5DC3D00D3C76 /* ActrService.swift */; };
 		9DBBAC2076085D9172642C35 /* ProbeResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DEBC9D85447AE75C27A013A /* ProbeResult.swift */; };
 		C3FC3EDD075D2468B57307A7 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D9EE0EF3109F0D05EF377F /* ContentView.swift */; };
+		D6394485B78C61E4C1952852 /* probe.pb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C3A6CCF852FB61E986DA2A /* probe.pb.swift */; };
 		D8D11B242E85A384DD926A04 /* actr.lock.toml in Resources */ = {isa = PBXBuildFile; fileRef = 5E538738252CE3594EB4D2C8 /* actr.lock.toml */; };
 		F4DD96D92A6FC911166FEE06 /* DataStreamApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8AEAB7FA1AD8403C7D74795 /* DataStreamApp.swift */; };
 		FE0BA22074873947E6BE256F /* DataStreamProbeRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D95BAB5B0C0429EC9119046B /* DataStreamProbeRunner.swift */; };
@@ -26,6 +28,7 @@
 		5E538738252CE3594EB4D2C8 /* actr.lock.toml */ = {isa = PBXFileReference; path = actr.lock.toml; sourceTree = "<group>"; };
 		6DEBC9D85447AE75C27A013A /* ProbeResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProbeResult.swift; sourceTree = "<group>"; };
 		88D7D4587AAE5A184D3E475D /* DataStreamApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DataStreamApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		97C3A6CCF852FB61E986DA2A /* probe.pb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = probe.pb.swift; sourceTree = "<group>"; };
 		9D1AAFFF13C651795C89FF5E /* duplex_stream.client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = duplex_stream.client.swift; sourceTree = "<group>"; };
 		9EF2EB3E0B852249DA1A84C0 /* duplex_stream.pb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = duplex_stream.pb.swift; sourceTree = "<group>"; };
 		A4CECF7D6D5D4624BD95A862 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -34,6 +37,7 @@
 		D95BAB5B0C0429EC9119046B /* DataStreamProbeRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStreamProbeRunner.swift; sourceTree = "<group>"; };
 		E1FAD1A7F51376291CD2D232 /* actr.toml */ = {isa = PBXFileReference; path = actr.toml; sourceTree = "<group>"; };
 		F8AEAB7FA1AD8403C7D74795 /* DataStreamApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStreamApp.swift; sourceTree = "<group>"; };
+		FC5871CF112EE0190D3F0212 /* probe.actor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = probe.actor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +66,8 @@
 			children = (
 				9D1AAFFF13C651795C89FF5E /* duplex_stream.client.swift */,
 				9EF2EB3E0B852249DA1A84C0 /* duplex_stream.pb.swift */,
+				FC5871CF112EE0190D3F0212 /* probe.actor.swift */,
+				97C3A6CCF852FB61E986DA2A /* probe.pb.swift */,
 			);
 			path = local;
 			sourceTree = "<group>";
@@ -217,6 +223,8 @@
 				505E539D0131A378F30F5842 /* SessionAckCollector.swift in Sources */,
 				2ACBC15E86339C6EAD125802 /* duplex_stream.client.swift in Sources */,
 				84E96B503217B5BB50E5940B /* duplex_stream.pb.swift in Sources */,
+				84A6689C273FAB36B09C0E18 /* probe.actor.swift in Sources */,
+				D6394485B78C61E4C1952852 /* probe.pb.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

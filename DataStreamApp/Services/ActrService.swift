@@ -1,6 +1,9 @@
 import Actr
 import Foundation
+import OSLog
 import SwiftUI
+
+private let logger = Logger(subsystem: "com.actrium.DataStreamApp", category: "ActrService")
 
 @MainActor
 final class ActrService: ObservableObject {
@@ -12,13 +15,13 @@ final class ActrService: ObservableObject {
 
     private var actrNode: ActrNode?
     private var actorRef: ActrRef?
-    private var ctx: ContextBridge?
     private var isStarting = false
+    private var hasRun = false
 
-    var isReady: Bool { ctx != nil }
+    var isReady: Bool { actorRef != nil }
 
     func startIfNeeded() async {
-        guard ctx == nil, !isStarting else { return }
+        guard actorRef == nil, !isStarting else { return }
         isStarting = true
         defer { isStarting = false }
 
@@ -26,14 +29,9 @@ final class ActrService: ObservableObject {
             let configURL = try materializeRuntimeConfig()
             let actorType = ActrType(manufacturer: "demo2", name: "DuplexStreamProbeClient", version: "1.0.0")
 
-            let lifecycleAdapter = ProbeClientLifecycleAdapter(onReady: { [weak self] bridge in
-                Task { @MainActor in
-                    self?.ctx = bridge
-                }
-            })
-
+            let handler = ProbeHandlerImpl(service: self)
             let workload = DynamicWorkload(
-                lifecycle: lifecycleAdapter,
+                lifecycle: ProbeLifecycleAdapter(workload: ProbeServiceWorkload(handler: handler)),
                 signaling: nil,
                 websocket: nil,
                 webrtc: nil,
@@ -47,9 +45,11 @@ final class ActrService: ObservableObject {
             actrNode = node
             actorRef = ref
             status = "Ready: \(actorType.toStringRepr())"
+            NSLog("[DataStreamApp] ✅ node started")
         } catch {
             status = "ACTR startup failed: \(error)"
             errorMessage = String(describing: error)
+            NSLog("[DataStreamApp] ❌ Startup failed: \(error)")
         }
     }
 
@@ -58,25 +58,34 @@ final class ActrService: ObservableObject {
         await actorRef.stop()
         self.actorRef = nil
         actrNode = nil
-        ctx = nil
+    }
+
+    nonisolated var shouldAutoRun: Bool {
+        ProcessInfo.processInfo.environment["ACTR_DATASTREAMAPP_AUTO_RUN"] == "1"
     }
 
     func runAllProbes() async {
-        guard let ctx else { return }
+        guard self.actorRef != nil, !hasRun else {
+            logger.warning("runAllProbes: actorRef=\(self.actorRef != nil) hasRun=\(self.hasRun)")
+            return
+        }
+        hasRun = true
+        NSLog("[DataStreamApp] runAllProbes: calling StartProbe RPC...")
         isRunning = true
         results = []
         logLines = ["--- Starting DataStream probe run ---"]
 
-        let runner = DataStreamProbeRunner(ctx: ctx)
-        let probeResults = await runner.runAll()
+        var req = Local_StartProbeRequest()
+        req.probeName = "run-all"
+        req.targetType = "demo2:DuplexStreamService:1.0.0"
 
-        results = probeResults
-        for result in probeResults {
-            logLines.append(contentsOf: result.logLines)
+        do {
+            let resp: Local_StartProbeResponse = try await self.actorRef!.call(req)
+            logLines.append("StartProbe response: started=\(resp.started) msg=\(resp.message)")
+        } catch {
+            logLines.append("[FAIL] StartProbe RPC failed: \(error)")
+            NSLog("[DataStreamApp] StartProbe RPC failed: \(error)")
         }
-
-        let passCount = probeResults.filter(\.passed).count
-        logLines.append("--- Done: \(passCount)/\(probeResults.count) passed ---")
         isRunning = false
     }
 
@@ -116,29 +125,200 @@ private enum ActrServiceError: Error {
     case missingConfigTemplate
 }
 
-/// Simple Workload lifecycle adapter for a pure client.
-/// Saves ContextBridge in onReady. No local service dispatch.
-private final class ProbeClientLifecycleAdapter: Workload, @unchecked Sendable {
-    private let onReadyHandler: (ContextBridge) -> Void
+// MARK: - ProbeService RPC Handler
 
-    init(onReady: @escaping (ContextBridge) -> Void) {
-        self.onReadyHandler = onReady
+/// Implements ProbeServiceHandler.startProbe(req:ctx:).
+/// When this RPC fires, ctx is delivered — discover target then run all probes.
+private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
+    private weak var service: ActrService?
+
+    init(service: ActrService) {
+        self.service = service
+    }
+
+    func startProbe(
+        req: Local_StartProbeRequest,
+        ctx: Context
+    ) async throws -> Local_StartProbeResponse {
+        NSLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
+
+        // Discover target synchronously so we can return immediately if not found
+        let targetType = try ActrType.fromStringRepr("demo2:DuplexStreamService:1.0.0")
+        let target: ActrId
+        do {
+            target = try await ctx.discover(targetType: targetType)
+            NSLog("[DataStreamApp] Discovered target: \(target.type.toStringRepr())")
+        } catch {
+            NSLog("[DataStreamApp] ❌ discover failed: \(error)")
+            var resp = Local_StartProbeResponse()
+            resp.started = false
+            resp.message = "discover failed: \(error)"
+            return resp
+        }
+
+        // Run probes synchronously — ctx is only valid inside the handler
+        let svc = service
+        let runner = DataStreamProbeRunner(ctx: ctx, target: target)
+        let allResults = await runner.runAll()
+
+        for r in allResults {
+            let status = r.passed ? "PASS" : "FAIL"
+            NSLog("[DataStreamApp] [\(status)] \(r.name) (\(r.durationMs)ms): \(r.details)")
+        }
+        let passCount = allResults.filter(\.passed).count
+        NSLog("[DataStreamApp] Done: \(passCount)/\(allResults.count) passed")
+
+        await MainActor.run {
+            svc?.results = allResults
+            svc?.isRunning = false
+            for r in allResults {
+                svc?.logLines.append(contentsOf: r.logLines)
+            }
+        }
+
+        var resp = Local_StartProbeResponse()
+        resp.started = true
+        resp.message = "\(passCount)/\(allResults.count) passed"
+        return resp
+    }
+
+    /// Starts a second linked node with unauthorized identity to test ACL rejection.
+    private func runAclProbe() async -> ProbeResult? {
+        let start = ContinuousClock.now
+        do {
+            let unauthorizedType = ActrType(manufacturer: "demo2", name: "UnauthorizedStreamProbeClient", version: "1.0.0")
+
+            // Create a config with empty ACL
+            let configURL = try makeUnauthorizedConfig()
+
+            // Simple lifecycle — just try to discover
+            let adapter = AclProbeLifecycleAdapter()
+            let workload = DynamicWorkload(
+                lifecycle: adapter,
+                signaling: nil, websocket: nil, webrtc: nil, credential: nil, mailbox: nil
+            )
+
+            let node = try await ActrNode.linked(config: configURL, type: unauthorizedType, workload: workload)
+            let ref = try await node.start()
+
+            // Wait a moment for onReady
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+
+            // Try discover
+            let targetType = ActrType(manufacturer: "demo2", name: "DuplexStreamService", version: "1.0.0")
+            if let ctx = adapter.savedCtx {
+                do {
+                    _ = try await ctx.discover(targetType: targetType)
+                    // Success = ACL failure
+                    await ref.stop()
+                    let ms = elapsedMs(from: ContinuousClock.now - start)
+                    return ProbeResult(name: "acl-rejects-unauthorized-client", passed: false, durationMs: ms, details: "Discovery succeeded — ACL not enforced", logLines: ["FAIL: unauthorized client should be rejected"])
+                } catch {
+                    // Expected: discovery fails
+                    await ref.stop()
+                    let ms = elapsedMs(from: ContinuousClock.now - start)
+                    NSLog("[DataStreamApp] ACL probe: unauthorized discovery rejected: \(error)")
+                    return ProbeResult(name: "acl-rejects-unauthorized-client", passed: true, durationMs: ms, details: "Rejected: \(error.localizedDescription)", logLines: ["PASS acl-rejects-unauthorized-client error=failed to discover DuplexStreamService"])
+                }
+            } else {
+                await ref.stop()
+                let ms = elapsedMs(from: ContinuousClock.now - start)
+                return ProbeResult(name: "acl-rejects-unauthorized-client", passed: false, durationMs: ms, details: "onReady never fired for unauthorized node", logLines: ["FAIL: onReady never fired"])
+            }
+        } catch {
+            let ms = elapsedMs(from: ContinuousClock.now - start)
+            // If the node itself fails to start, that's also an ACL pass (unauthorized identity rejected)
+            let errStr = String(describing: error)
+            if errStr.contains("Forbidden") || errStr.contains("rejected") || errStr.contains("unauthorized") || errStr.contains("ACL") {
+                NSLog("[DataStreamApp] ACL probe: unauthorized node rejected at start: \(error)")
+                return ProbeResult(name: "acl-rejects-unauthorized-client", passed: true, durationMs: ms, details: "Rejected at start: \(errStr)", logLines: ["PASS acl-rejects-unauthorized-client error=failed to start unauthorized client"])
+            }
+            NSLog("[DataStreamApp] ACL probe error: \(error)")
+            return ProbeResult(name: "acl-rejects-unauthorized-client", passed: false, durationMs: ms, details: "Error: \(errStr)", logLines: ["FAIL: \(errStr)"])
+        }
+    }
+}
+
+// MARK: - Unauthorized Config Generator
+
+private func makeUnauthorizedConfig() throws -> URL {
+    let fileManager = FileManager.default
+    let supportURL = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+    let appURL = supportURL.appendingPathComponent("DataStreamApp", isDirectory: true)
+    let dataURL = appURL.appendingPathComponent("hyper-acl", isDirectory: true)
+    try fileManager.createDirectory(at: dataURL, withIntermediateDirectories: true)
+
+    let config = """
+    [signaling]
+    url = "ws://124.71.231.251:9080/signaling/ws"
+
+    [ais_endpoint]
+    url = "http://124.71.231.251:9080/ais"
+
+    [deployment]
+    realm_id = 33554433
+    realm_secret = "rs_CA1ueOmjzSmmd8UCgJeefGoCYWPkj8Oh"
+
+    [discovery]
+    visible = false
+
+    [observability]
+    filter_level = "error"
+    tracing_enabled = false
+
+    [webrtc]
+    force_relay = false
+    stun_urls = ["stun:124.71.231.251:3487"]
+
+    [hyper]
+    data_dir = "\(dataURL.path)"
+
+    [hyper.trust]
+    kind = "dev_only"
+    """
+
+    let configURL = appURL.appendingPathComponent("actr-acl.toml")
+    try config.write(to: configURL, atomically: true, encoding: .utf8)
+    return configURL
+}
+
+// MARK: - ACL Probe Lifecycle Adapter
+
+private final class AclProbeLifecycleAdapter: Workload, @unchecked Sendable {
+    var savedCtx: ContextBridge?
+
+    func onStart(ctx: ContextBridge) async throws {}
+    func onReady(ctx: ContextBridge) async throws { savedCtx = ctx }
+    func onStop(ctx: ContextBridge) async throws {}
+    func onError(ctx: ContextBridge, event: ErrorEventBridge) async throws {}
+    func dispatch(ctx: ContextBridge, envelope: RpcEnvelopeBridge) async throws -> Data {
+        throw ActrError.UnknownRoute(msg: "No dispatch for ACL probe")
+    }
+}
+
+// MARK: - Lifecycle Adapter
+
+private final class ProbeLifecycleAdapter: Workload, @unchecked Sendable {
+    private let workload: ProbeServiceWorkload<ProbeHandlerImpl>
+
+    init(workload: ProbeServiceWorkload<ProbeHandlerImpl>) {
+        self.workload = workload
     }
 
     func onStart(ctx: ContextBridge) async throws {}
-
-    func onReady(ctx: ContextBridge) async throws {
-        onReadyHandler(ctx)
-    }
-
+    func onReady(ctx: ContextBridge) async throws {}
     func onStop(ctx: ContextBridge) async throws {}
 
     func onError(ctx: ContextBridge, event: ErrorEventBridge) async throws {
-        print("ProbeClientLifecycleAdapter error: \(event)")
+        NSLog("[DataStreamApp] ProbeLifecycleAdapter error: \(event)")
     }
 
     func dispatch(ctx: ContextBridge, envelope: RpcEnvelopeBridge) async throws -> Data {
-        // Pure client — no local RPC to dispatch
-        throw ActrError.Internal(msg: "No local service dispatch for DataStreamApp client")
+        try await workload.__dispatch(ctx: ctx, envelope: envelope)
     }
+}
+
+private func elapsedMs(from duration: Duration) -> Int64 {
+    let c = duration.components
+    return Int64(c.seconds * 1000) + Int64(c.attoseconds / 1_000_000_000_000_000)
 }

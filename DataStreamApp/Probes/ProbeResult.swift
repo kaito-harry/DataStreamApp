@@ -9,7 +9,6 @@ struct ProbeResult: Identifiable {
     let logLines: [String]
 
     var icon: String { passed ? "checkmark.circle.fill" : "xmark.circle.fill" }
-    var color: String { passed ? "green" : "red" }
 }
 
 enum ProbeError: Error, CustomStringConvertible {

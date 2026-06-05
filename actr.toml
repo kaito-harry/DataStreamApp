@@ -21,14 +21,13 @@ visible = true
 
 [observability]
 filter_level = "info"
-tracing_enabled = true
-tracing_endpoint = "http://localhost:4317"
+tracing_enabled = false
 tracing_service_name = "datastream-app-ios"
 
 [webrtc]
 force_relay = false
 stun_urls = ["stun:124.71.231.251:3487"]
-turn_urls = ["turn:124.71.231.251:3487"]
+turn_urls = []
 
 [acl]
 

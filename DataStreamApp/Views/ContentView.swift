@@ -85,6 +85,15 @@ struct ContentView: View {
         }
         .task {
             await actrService.startIfNeeded()
+            NSLog("[DataStreamApp] startIfNeeded returned, shouldAutoRun=\(actrService.shouldAutoRun), isReady=\(actrService.isReady)")
+            if actrService.shouldAutoRun {
+                // Wait until ACTR node is ready, then run all probes
+                while !actrService.isReady {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                await actrService.runAllProbes()
+            }
         }
     }
 }

@@ -59,13 +59,15 @@ struct Local_StartDuplexStreamRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  var sessionID: String = String()
+
   var clientToServiceStreamID: String = String()
 
-  var serviceToClientStreamID: String = String()
+  var clientChunkCount: UInt32 = 0
 
   var payloadMode: Local_StreamPayloadMode = .streamReliable
 
-  var chunkCount: UInt32 = 0
+  var note: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -77,9 +79,13 @@ struct Local_StartDuplexStreamResponse: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  var ready: Bool = false
+  var sessionID: String = String()
 
-  var message: String = String()
+  var acceptedClientToServiceStreamID: String = String()
+
+  var serviceToClientStreamID: String = String()
+
+  var status: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -90,6 +96,8 @@ struct Local_FinishDuplexStreamRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
+
+  var sessionID: String = String()
 
   var clientToServiceStreamID: String = String()
 
@@ -105,9 +113,13 @@ struct Local_FinishDuplexStreamResponse: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  var acknowledged: Bool = false
+  var sessionID: String = String()
 
-  var message: String = String()
+  var clientChunksReceived: UInt32 = 0
+
+  var serviceChunksSent: UInt32 = 0
+
+  var status: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -124,7 +136,7 @@ extension Local_StreamPayloadMode: SwiftProtobuf._ProtoNameProviding {
 
 extension Local_StartDuplexStreamRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".StartDuplexStreamRequest"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}client_to_service_stream_id\0\u{3}service_to_client_stream_id\0\u{3}payload_mode\0\u{3}chunk_count\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}client_to_service_stream_id\0\u{3}client_chunk_count\0\u{3}payload_mode\0\u{1}note\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -132,36 +144,41 @@ extension Local_StartDuplexStreamRequest: SwiftProtobuf.Message, SwiftProtobuf._
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.clientToServiceStreamID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.serviceToClientStreamID) }()
-      case 3: try { try decoder.decodeSingularEnumField(value: &self.payloadMode) }()
-      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.chunkCount) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.clientToServiceStreamID) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.clientChunkCount) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.payloadMode) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.note) }()
       default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.clientToServiceStreamID.isEmpty {
-      try visitor.visitSingularStringField(value: self.clientToServiceStreamID, fieldNumber: 1)
+    if !self.sessionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 1)
     }
-    if !self.serviceToClientStreamID.isEmpty {
-      try visitor.visitSingularStringField(value: self.serviceToClientStreamID, fieldNumber: 2)
+    if !self.clientToServiceStreamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.clientToServiceStreamID, fieldNumber: 2)
+    }
+    if self.clientChunkCount != 0 {
+      try visitor.visitSingularUInt32Field(value: self.clientChunkCount, fieldNumber: 3)
     }
     if self.payloadMode != .streamReliable {
-      try visitor.visitSingularEnumField(value: self.payloadMode, fieldNumber: 3)
+      try visitor.visitSingularEnumField(value: self.payloadMode, fieldNumber: 4)
     }
-    if self.chunkCount != 0 {
-      try visitor.visitSingularUInt32Field(value: self.chunkCount, fieldNumber: 4)
+    if !self.note.isEmpty {
+      try visitor.visitSingularStringField(value: self.note, fieldNumber: 5)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: Local_StartDuplexStreamRequest, rhs: Local_StartDuplexStreamRequest) -> Bool {
+    if lhs.sessionID != rhs.sessionID {return false}
     if lhs.clientToServiceStreamID != rhs.clientToServiceStreamID {return false}
-    if lhs.serviceToClientStreamID != rhs.serviceToClientStreamID {return false}
+    if lhs.clientChunkCount != rhs.clientChunkCount {return false}
     if lhs.payloadMode != rhs.payloadMode {return false}
-    if lhs.chunkCount != rhs.chunkCount {return false}
+    if lhs.note != rhs.note {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -169,7 +186,7 @@ extension Local_StartDuplexStreamRequest: SwiftProtobuf.Message, SwiftProtobuf._
 
 extension Local_StartDuplexStreamResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".StartDuplexStreamResponse"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}ready\0\u{1}message\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}accepted_client_to_service_stream_id\0\u{3}service_to_client_stream_id\0\u{1}status\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -177,26 +194,36 @@ extension Local_StartDuplexStreamResponse: SwiftProtobuf.Message, SwiftProtobuf.
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularBoolField(value: &self.ready) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.message) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.acceptedClientToServiceStreamID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.serviceToClientStreamID) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.status) }()
       default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if self.ready != false {
-      try visitor.visitSingularBoolField(value: self.ready, fieldNumber: 1)
+    if !self.sessionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 1)
     }
-    if !self.message.isEmpty {
-      try visitor.visitSingularStringField(value: self.message, fieldNumber: 2)
+    if !self.acceptedClientToServiceStreamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.acceptedClientToServiceStreamID, fieldNumber: 2)
+    }
+    if !self.serviceToClientStreamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.serviceToClientStreamID, fieldNumber: 3)
+    }
+    if !self.status.isEmpty {
+      try visitor.visitSingularStringField(value: self.status, fieldNumber: 4)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: Local_StartDuplexStreamResponse, rhs: Local_StartDuplexStreamResponse) -> Bool {
-    if lhs.ready != rhs.ready {return false}
-    if lhs.message != rhs.message {return false}
+    if lhs.sessionID != rhs.sessionID {return false}
+    if lhs.acceptedClientToServiceStreamID != rhs.acceptedClientToServiceStreamID {return false}
+    if lhs.serviceToClientStreamID != rhs.serviceToClientStreamID {return false}
+    if lhs.status != rhs.status {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -204,7 +231,7 @@ extension Local_StartDuplexStreamResponse: SwiftProtobuf.Message, SwiftProtobuf.
 
 extension Local_FinishDuplexStreamRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".FinishDuplexStreamRequest"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}client_to_service_stream_id\0\u{3}service_to_client_stream_id\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}client_to_service_stream_id\0\u{3}service_to_client_stream_id\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -212,24 +239,29 @@ extension Local_FinishDuplexStreamRequest: SwiftProtobuf.Message, SwiftProtobuf.
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.clientToServiceStreamID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.serviceToClientStreamID) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.clientToServiceStreamID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.serviceToClientStreamID) }()
       default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.sessionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 1)
+    }
     if !self.clientToServiceStreamID.isEmpty {
-      try visitor.visitSingularStringField(value: self.clientToServiceStreamID, fieldNumber: 1)
+      try visitor.visitSingularStringField(value: self.clientToServiceStreamID, fieldNumber: 2)
     }
     if !self.serviceToClientStreamID.isEmpty {
-      try visitor.visitSingularStringField(value: self.serviceToClientStreamID, fieldNumber: 2)
+      try visitor.visitSingularStringField(value: self.serviceToClientStreamID, fieldNumber: 3)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: Local_FinishDuplexStreamRequest, rhs: Local_FinishDuplexStreamRequest) -> Bool {
+    if lhs.sessionID != rhs.sessionID {return false}
     if lhs.clientToServiceStreamID != rhs.clientToServiceStreamID {return false}
     if lhs.serviceToClientStreamID != rhs.serviceToClientStreamID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
@@ -239,7 +271,7 @@ extension Local_FinishDuplexStreamRequest: SwiftProtobuf.Message, SwiftProtobuf.
 
 extension Local_FinishDuplexStreamResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".FinishDuplexStreamResponse"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}acknowledged\0\u{1}message\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}client_chunks_received\0\u{3}service_chunks_sent\0\u{1}status\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -247,26 +279,36 @@ extension Local_FinishDuplexStreamResponse: SwiftProtobuf.Message, SwiftProtobuf
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularBoolField(value: &self.acknowledged) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.message) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.clientChunksReceived) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.serviceChunksSent) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.status) }()
       default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if self.acknowledged != false {
-      try visitor.visitSingularBoolField(value: self.acknowledged, fieldNumber: 1)
+    if !self.sessionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 1)
     }
-    if !self.message.isEmpty {
-      try visitor.visitSingularStringField(value: self.message, fieldNumber: 2)
+    if self.clientChunksReceived != 0 {
+      try visitor.visitSingularUInt32Field(value: self.clientChunksReceived, fieldNumber: 2)
+    }
+    if self.serviceChunksSent != 0 {
+      try visitor.visitSingularUInt32Field(value: self.serviceChunksSent, fieldNumber: 3)
+    }
+    if !self.status.isEmpty {
+      try visitor.visitSingularStringField(value: self.status, fieldNumber: 4)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: Local_FinishDuplexStreamResponse, rhs: Local_FinishDuplexStreamResponse) -> Bool {
-    if lhs.acknowledged != rhs.acknowledged {return false}
-    if lhs.message != rhs.message {return false}
+    if lhs.sessionID != rhs.sessionID {return false}
+    if lhs.clientChunksReceived != rhs.clientChunksReceived {return false}
+    if lhs.serviceChunksSent != rhs.serviceChunksSent {return false}
+    if lhs.status != rhs.status {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
