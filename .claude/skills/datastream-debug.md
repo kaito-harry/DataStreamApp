@@ -127,18 +127,18 @@ SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" 
 Two-layer structure (参照 echo-service):
 ```
 /home/actrium/datastream-service/        ← 外层：actr.toml + keys
-└── my-datastream/                       ← 内层：git clone workload 项目
+└── datastream-workload/                       ← 内层：git clone workload 项目
 ```
 
 ```bash
 # 1. Clone/update git repo (inner)
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/my-datastream && git pull'"
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/datastream-workload && git pull'"
 
 # 2. Build cdylib
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/my-datastream && cargo build --release --features cdylib'"
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/datastream-workload && cargo build --release --features cdylib'"
 
 # 3. Package as .actr
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/my-datastream && /home/actrium/actr/target/release/actr build -m manifest.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/echo-service/mfr.keychain.json'"
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/datastream-workload && /home/actrium/actr/target/release/actr build -m manifest.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/echo-service/mfr.keychain.json'"
 
 # 4. Stop old, start new (from outer dir where actr.toml lives)
 ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr stop <WID>'"
