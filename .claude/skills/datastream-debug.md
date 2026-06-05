@@ -11,7 +11,9 @@ Debug and diagnostic procedures for DataStreamApp and the remote actrix server.
 
 | Item | Value |
 |------|-------|
-| Remote server | `124.71.231.251` |
+| iOS Simulator | **iPhone 17 Pro Max** `51864B3D-EC7A-4853-B124-4370B9E43617` |
+| Remote server (test) | `124.71.231.251` |
+| Dev server | `192.168.212.112` |
 | Actrix path | `/opt/actr-project/actrix` |
 | Service logs | `/opt/actr-project/demo2_home/hyper/duplex-stream-service/logs/` |
 | Realm ID | 33554433 |
@@ -76,17 +78,21 @@ ssh root@124.71.231.251 "cd /opt/actr-project/demo2_duplex_stream_service && ./r
 
 ### Build & Launch DataStreamApp
 
+**Fixed device:** iPhone 17 Pro Max `51864B3D-EC7A-4853-B124-4370B9E43617`
+
 ```bash
 cd /Users/kaito/Project/Actrium/DataStreamApp
+DEV="51864B3D-EC7A-4853-B124-4370B9E43617"
+
+# Ensure device is booted
+xcrun simctl boot "$DEV" 2>/dev/null
 
 # Build
 xcodebuild -project DataStreamApp.xcodeproj -scheme DataStreamApp \
-  -destination 'platform=iOS Simulator,id=70A270E7-E950-4285-B8F9-D616DAB07E89' build
+  -destination "platform=iOS Simulator,id=$DEV" build
 
 # Install + Launch with auto-run
 APP=$(find ~/Library/Developer/Xcode/DerivedData/DataStreamApp-*/Build/Products/Debug-iphonesimulator -name 'DataStreamApp.app' -d | head -1)
-DEV="70A270E7-E950-4285-B8F9-D616DAB07E89"
-
 xcrun simctl terminate "$DEV" com.actrium.DataStreamApp 2>/dev/null
 xcrun simctl install "$DEV" "$APP"
 SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" com.actrium.DataStreamApp
