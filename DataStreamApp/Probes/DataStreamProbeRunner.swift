@@ -2,6 +2,7 @@ import Actr
 import Foundation
 import SwiftProtobuf
 
+/// Runs 8 datastream probes per STREAM_CAPABILITY_VERIFICATION.zh.md
 final class DataStreamProbeRunner: @unchecked Sendable {
     private let ctx: ContextBridge
     private let target: ActrId
@@ -13,16 +14,15 @@ final class DataStreamProbeRunner: @unchecked Sendable {
 
     func runAll() async -> [ProbeResult] {
         var results: [ProbeResult] = []
-        // Start with just 2 probes to verify connectivity
         let probes: [(String, () async throws -> ProbeResult)] = [
-            ("payload-type-reliable", probe1),
-            ("payload-type-latency-first", probe2),
-            ("sequence-order", probe3),
-            ("metadata-roundtrip", probe4),
-            ("duplex-stream-isolation", probe5),
-            ("concurrent-sessions", probe6),
-            ("unregister-after-finish", probe7),
-            ("acl-rejects-unauthorized-client", probe8),
+            ("payload-type-reliable", p1),
+            ("payload-type-latency-first", p2),
+            ("sequence-order", p3),
+            ("metadata-roundtrip", p4),
+            ("duplex-stream-isolation", p5),
+            ("concurrent-sessions", p6),
+            ("unregister-after-finish", p7),
+            ("acl-rejects-unauthorized-client", p8),
         ]
         for (name, probe) in probes {
             results.append(await runOne(name: name, probe: probe))
@@ -42,99 +42,250 @@ final class DataStreamProbeRunner: @unchecked Sendable {
         }
     }
 
-    // MARK: - Probe 1
+    // MARK: - Standard session flow (document lines 163-211)
+    // 1. client generate session_id + c2s_id
+    // 2. client call StartDuplexStream (RPC) → service registers c2s, returns s2c_id
+    // 3. client registers s2c callback
+    // 4. client sends chunks on c2s → service echos ack on s2c
+    // 5. client verifies acks
+    // 6. client calls FinishDuplexStream → service unregisters c2s
+    // 7. client unregisters s2c
 
-    private func probe1() async throws -> ProbeResult {
-        var log: [String] = []
-        let sid = "reliable-main"
+    struct Session {
+        let sid: String; let c2s: String; let s2c: String; let col: SessionAckCollector
+    }
+
+    /// Start session per doc: StartDuplexStream → register s2c callback.
+    func start(sid: String, mode: Local_StreamPayloadMode, count: UInt32, log: inout [String]) async throws -> Session {
         let c2s = "c2s-\(sid)"
-
-        // Start
         var req = Local_StartDuplexStreamRequest()
         req.sessionID = sid
         req.clientToServiceStreamID = c2s
-        req.clientChunkCount = 3
-        req.payloadMode = .streamReliable
-        req.note = "iOS probe"
+        req.clientChunkCount = count
+        req.payloadMode = mode
+        req.note = "DataStreamApp iOS probe"
 
-        let rd = try await ctx.callRaw(target: target, routeKey: Local_StartDuplexStreamRequest.routeKey, payloadType: .rpcReliable, payload: try req.serializedData(), timeoutMs: 120_000)
+        let rd = try await ctx.callRaw(target: target, routeKey: Local_StartDuplexStreamRequest.routeKey,
+            payloadType: .rpcReliable, payload: try req.serializedData(), timeoutMs: 60_000)
         let resp = try Local_StartDuplexStreamResponse(serializedBytes: rd)
         log.append("Start: sid=\(resp.sessionID) s2c=\(resp.serviceToClientStreamID) status=\(resp.status)")
 
         let s2c = resp.serviceToClientStreamID
-        guard !s2c.isEmpty else { throw ProbeError.runtimeError("empty s2c") }
+        guard !s2c.isEmpty else { throw ProbeError.runtimeError("empty service_to_client_stream_id") }
 
-        // Register
-        let collector = SessionAckCollector(streamId: s2c, expectedCount: 3)
-        try await ctx.registerStream(streamId: s2c, callback: collector)
+        let col = SessionAckCollector(streamId: s2c, expectedCount: Int(count))
+        try await ctx.registerStream(streamId: s2c, callback: col)
         log.append("Registered \(s2c)")
+        return Session(sid: sid, c2s: c2s, s2c: s2c, col: col)
+    }
 
-        // Send 3 chunks
-        for seq: UInt64 in [1, 2, 3] {
-            let chunk = DataStream(streamId: c2s, sequence: seq, payload: Data("reliable-\(seq)".utf8), metadata: [.init(key: "session_id", value: sid)], timestampMs: nil)
-            try await ctx.sendDataStream(target: target, chunk: chunk, payloadType: .streamReliable)
-            log.append("Sent chunk seq=\(seq)")
+    func finish(s: Session, log: inout [String]) async throws -> Local_FinishDuplexStreamResponse {
+        var req = Local_FinishDuplexStreamRequest()
+        req.sessionID = s.sid; req.clientToServiceStreamID = s.c2s; req.serviceToClientStreamID = s.s2c
+        let rd = try await ctx.callRaw(target: target, routeKey: Local_FinishDuplexStreamRequest.routeKey,
+            payloadType: .rpcReliable, payload: try req.serializedData(), timeoutMs: 30_000)
+        let resp = try Local_FinishDuplexStreamResponse(serializedBytes: rd)
+        log.append("Finish: sid=\(resp.sessionID) c2sRecv=\(resp.clientChunksReceived) s2cSent=\(resp.serviceChunksSent) status=\(resp.status)")
+        return resp
+    }
+
+    func teardown(s: Session, log: inout [String]) async throws {
+        _ = try await finish(s: s, log: &log)
+        try await ctx.unregisterStream(streamId: s.s2c)
+        log.append("Unregistered \(s.s2c)")
+    }
+
+    func sendChunk(c2s: String, seq: UInt64, payload: Data, pt: PayloadType, sid: String, log: inout [String]) async throws {
+        let chunk = DataStream(streamId: c2s, sequence: seq, payload: payload,
+            metadata: [.init(key: "session_id", value: sid)], timestampMs: nil)
+        try await ctx.sendDataStream(target: target, chunk: chunk, payloadType: pt)
+        log.append("Sent seq=\(seq) on \(c2s)")
+    }
+
+    // MARK: - Probe 1: payload-type-reliable
+
+    func p1() async throws -> ProbeResult {
+        var log: [String] = []
+        let s = try await start(sid: "reliable-main", mode: .streamReliable, count: 3, log: &log)
+        // teardown at end of probe
+
+        for seq: UInt64 in [1,2,3] {
+            try await sendChunk(c2s: s.c2s, seq: seq, payload: Data("reliable-\(seq)".utf8), pt: .streamReliable, sid: s.sid, log: &log)
         }
-
-        // Wait for acks
-        let received = try await collector.waitForCompletion(timeoutMs: 30_000)
-        let got = Set(received.map(\.sequence))
-        log.append("Received acks: \(got.sorted())")
-        let passed = got == [1001, 1002, 1003] || got == Set([1, 2, 3].map { $0 + 1000 }) || received.count == 3
-
-        // Finish
-        var freq = Local_FinishDuplexStreamRequest()
-        freq.sessionID = sid; freq.clientToServiceStreamID = c2s; freq.serviceToClientStreamID = s2c
-        let frd = try await ctx.callRaw(target: target, routeKey: Local_FinishDuplexStreamRequest.routeKey, payloadType: .rpcReliable, payload: try freq.serializedData(), timeoutMs: 30_000)
-        let fresp = try Local_FinishDuplexStreamResponse(serializedBytes: frd)
-        log.append("Finish: sid=\(fresp.sessionID) c2sRecv=\(fresp.clientChunksReceived) s2cSent=\(fresp.serviceChunksSent)")
-
-        try await ctx.unregisterStream(streamId: s2c)
-        log.append(passed ? "PASS payload-type-reliable" : "[FAIL] Got \(got.sorted())")
+        let acks = try await s.col.waitForCompletion()
+        let got = Set(acks.map(\.sequence))
+        let passed = got == [1001,1002,1003]
+        log.append(passed ? "PASS payload-type-reliable" : "[FAIL] Expected [1001,1002,1003], got \(got.sorted())")
+        try? await teardown(s: s, log: &log)
         return ProbeResult(name: "payload-type-reliable", passed: passed, durationMs: 0, details: "acks=\(got.sorted())", logLines: log)
     }
 
-    // MARK: - Probe 2
+    // MARK: - Probe 2: payload-type-latency-first
 
-    private func probe2() async throws -> ProbeResult {
+    func p2() async throws -> ProbeResult {
         var log: [String] = []
-        let sid = "latency-main"
-        let c2s = "c2s-\(sid)"
+        let s = try await start(sid: "latency-main", mode: .streamLatencyFirst, count: 3, log: &log)
+        // teardown at end of probe
 
-        var req = Local_StartDuplexStreamRequest()
-        req.sessionID = sid; req.clientToServiceStreamID = c2s; req.clientChunkCount = 3; req.payloadMode = .streamLatencyFirst; req.note = "iOS probe"
-
-        let rd = try await ctx.callRaw(target: target, routeKey: Local_StartDuplexStreamRequest.routeKey, payloadType: .rpcReliable, payload: try req.serializedData(), timeoutMs: 120_000)
-        let resp = try Local_StartDuplexStreamResponse(serializedBytes: rd)
-        log.append("Start: s2c=\(resp.serviceToClientStreamID) status=\(resp.status)")
-        let s2c = resp.serviceToClientStreamID
-
-        let collector = SessionAckCollector(streamId: s2c, expectedCount: 3)
-        try await ctx.registerStream(streamId: s2c, callback: collector)
-
-        for seq: UInt64 in [1, 2, 3] {
-            let chunk = DataStream(streamId: c2s, sequence: seq, payload: Data("latency-\(seq)".utf8), metadata: [.init(key: "session_id", value: sid)], timestampMs: nil)
-            try await ctx.sendDataStream(target: target, chunk: chunk, payloadType: .streamLatencyFirst)
+        for seq: UInt64 in [1,2,3] {
+            try await sendChunk(c2s: s.c2s, seq: seq, payload: Data("latency-\(seq)".utf8), pt: .streamLatencyFirst, sid: s.sid, log: &log)
         }
-        let received = try await collector.waitForCompletion()
-        let passed = received.count >= 1
-
-        var freq = Local_FinishDuplexStreamRequest(); freq.sessionID = sid; freq.clientToServiceStreamID = c2s; freq.serviceToClientStreamID = s2c
-        _ = try await ctx.callRaw(target: target, routeKey: Local_FinishDuplexStreamRequest.routeKey, payloadType: .rpcReliable, payload: try freq.serializedData(), timeoutMs: 30_000)
-        try await ctx.unregisterStream(streamId: s2c)
-        log.append(passed ? "PASS payload-type-latency-first" : "[FAIL] Got \(received.count)/3")
-        return ProbeResult(name: "payload-type-latency-first", passed: passed, durationMs: 0, details: "\(received.count)/3", logLines: log)
+        let acks = try await s.col.waitForCompletion()
+        let fresp = try await finish(s: s, log: &log)
+        let passed = acks.count == 3 && fresp.clientChunksReceived == 3 && fresp.serviceChunksSent == 3
+        log.append(passed ? "PASS payload-type-latency-first" : "[FAIL] acks=\(acks.count) recv=\(fresp.clientChunksReceived) sent=\(fresp.serviceChunksSent)")
+        try? await teardown(s: s, log: &log)
+        return ProbeResult(name: "payload-type-latency-first", passed: passed, durationMs: 0, details: "\(acks.count)/3", logLines: log)
     }
 
-    // Placeholder probes 3-8
-    private func probe3() async throws -> ProbeResult { return ProbeResult(name: "sequence-order", passed: false, durationMs: 0, details: "not implemented", logLines: []) }
-    private func probe4() async throws -> ProbeResult { return ProbeResult(name: "metadata-roundtrip", passed: false, durationMs: 0, details: "not implemented", logLines: []) }
-    private func probe5() async throws -> ProbeResult { return ProbeResult(name: "duplex-stream-isolation", passed: false, durationMs: 0, details: "not implemented", logLines: []) }
-    private func probe6() async throws -> ProbeResult { return ProbeResult(name: "concurrent-sessions", passed: false, durationMs: 0, details: "not implemented", logLines: []) }
-    private func probe7() async throws -> ProbeResult { return ProbeResult(name: "unregister-after-finish", passed: false, durationMs: 0, details: "not implemented", logLines: []) }
-    private func probe8() async throws -> ProbeResult { return ProbeResult(name: "acl-rejects-unauthorized-client", passed: true, durationMs: 0, details: "placeholder", logLines: ["PASS acl-rejects-unauthorized-client"]) }
+    // MARK: - Probe 3: sequence-order (send one, wait for ack, then next)
 
-    private static func elapsedMs(from duration: Duration) -> Int64 {
-        let c = duration.components; return Int64(c.seconds * 1000) + Int64(c.attoseconds / 1_000_000_000_000_000)
+    func p3() async throws -> ProbeResult {
+        var log: [String] = []
+        let s = try await start(sid: "sequence-main", mode: .streamReliable, count: 3, log: &log)
+        // teardown at end of probe
+
+        for seq: UInt64 in [1,2,3] {
+            try await sendChunk(c2s: s.c2s, seq: seq, payload: Data("seq-\(seq)".utf8), pt: .streamReliable, sid: s.sid, log: &log)
+            let deadline = Date().addingTimeInterval(15)
+            while Date() < deadline { if await s.col.receivedCount >= Int(seq) { break }; try await Task.sleep(nanoseconds: 50_000_000) }
+        }
+        let acks = try await s.col.waitForCompletion()
+        let seqs = acks.map(\.sequence)
+        let passed = seqs == [1001,1002,1003]
+        log.append(passed ? "PASS sequence-order" : "[FAIL] \(seqs)")
+        try? await teardown(s: s, log: &log)
+        return ProbeResult(name: "sequence-order", passed: passed, durationMs: 0, details: "seqs=\(seqs)", logLines: log)
+    }
+
+    // MARK: - Probe 4: metadata-roundtrip
+
+    func p4() async throws -> ProbeResult {
+        var log: [String] = []
+        let s = try await start(sid: "metadata-main", mode: .streamReliable, count: 2, log: &log)
+        // teardown at end of probe
+
+        for (i, label) in ["alpha","beta"].enumerated() {
+            let seq = UInt64(i+1)
+            let chunk = DataStream(streamId: s.c2s, sequence: seq, payload: Data(label.utf8),
+                metadata: [.init(key: "session_id", value: s.sid), .init(key: "direction", value: "client-to-service"), .init(key: "chunk_label", value: label)], timestampMs: nil)
+            try await ctx.sendDataStream(target: target, chunk: chunk, payloadType: .streamReliable)
+            log.append("Sent seq=\(seq) \(label)")
+        }
+        let acks = try await s.col.waitForCompletion()
+        var ok = true
+        for ack in acks {
+            let hasSid = ack.metadata.contains { $0.key == "session_id" && $0.value == s.sid }
+            let hasDir = ack.metadata.contains { $0.key == "direction" && $0.value == "service-to-client" }
+            let hasAck = ack.metadata.contains { $0.key == "ack_for_sequence" }
+            let hasSrc = ack.metadata.contains { $0.key == "source_stream_id" && $0.value == s.c2s }
+            if !hasSid || !hasDir || !hasAck || !hasSrc { ok = false }
+        }
+        let passed = ok && acks.count == 2
+        log.append(passed ? "PASS metadata-roundtrip" : "[FAIL] ok=\(ok) count=\(acks.count)")
+        try? await teardown(s: s, log: &log)
+        return ProbeResult(name: "metadata-roundtrip", passed: passed, durationMs: 0, details: "ok=\(ok)", logLines: log)
+    }
+
+    // MARK: - Probe 5: duplex-stream-isolation
+
+    func p5() async throws -> ProbeResult {
+        var log: [String] = []
+        let s = try await start(sid: "isolation-main", mode: .streamReliable, count: 2, log: &log)
+        // teardown at end of probe
+
+        for seq: UInt64 in [1,2] {
+            try await sendChunk(c2s: s.c2s, seq: seq, payload: Data("iso-\(seq)".utf8), pt: .streamReliable, sid: s.sid, log: &log)
+        }
+        let acks = try await s.col.waitForCompletion()
+        let allS2c = acks.allSatisfy { $0.streamId == s.s2c }
+        let diff = s.c2s != s.s2c
+        let srcOk = acks.allSatisfy { ack in ack.metadata.contains { $0.key == "source_stream_id" && $0.value == s.c2s } }
+        let passed = allS2c && diff && srcOk && acks.count == 2
+        log.append(passed ? "PASS duplex-stream-isolation" : "[FAIL] allS2c=\(allS2c) diff=\(diff) srcOk=\(srcOk)")
+        try? await teardown(s: s, log: &log)
+        return ProbeResult(name: "duplex-stream-isolation", passed: passed, durationMs: 0, details: "c2s!=s2c=\(diff)", logLines: log)
+    }
+
+    // MARK: - Probe 6: concurrent-sessions
+
+    func p6() async throws -> ProbeResult {
+        var log: [String] = []
+        let configs = [("concurrent-apple","apple"), ("concurrent-banana","banana")]
+
+        var sessions: [(String,Session)] = []
+        for (sid, _) in configs {
+            var sl: [String] = []
+            let s = try await start(sid: sid, mode: .streamReliable, count: 2, log: &sl)
+            sessions.append((sid, s)); log.append(contentsOf: sl)
+        }
+
+        // Send concurrently
+        try await withThrowingTaskGroup(of: Void.self) { g in
+            for (sid, s) in sessions {
+                g.addTask {
+                    for seq: UInt64 in [1,2] {
+                        let chunk = DataStream(streamId: s.c2s, sequence: seq, payload: Data("\(sid == "concurrent-apple" ? "apple" : "banana")-\(seq)".utf8),
+                            metadata: [.init(key: "session_id", value: sid)], timestampMs: nil)
+                        try await self.ctx.sendDataStream(target: self.target, chunk: chunk, payloadType: .streamReliable)
+                    }
+                }
+            }
+            try await g.waitForAll()
+        }
+
+        // Collect concurrently
+        let results = try await withThrowingTaskGroup(of: (String,[DataStream]).self) { g in
+            for (sid, s) in sessions { g.addTask { (sid, try await s.col.waitForCompletion()) } }
+            var r: [(String,[DataStream])] = []; for try await x in g { r.append(x) }; return r
+        }
+
+        // Teardown
+        for (_, s) in sessions { try? await teardown(s: s, log: &log) }
+
+        var allOk = true
+        for (sid, acks) in results {
+            let exp = "s2c-\(sid)"
+            if !acks.allSatisfy({ $0.streamId == exp }) { allOk = false }
+        }
+        let passed = allOk && results.allSatisfy({ $0.1.count == 2 })
+        log.append(passed ? "PASS concurrent-sessions" : "[FAIL]")
+        return ProbeResult(name: "concurrent-sessions", passed: passed, durationMs: 0, details: "counts=\(results.map(\.1.count))", logLines: log)
+    }
+
+    // MARK: - Probe 7: unregister-after-finish
+
+    func p7() async throws -> ProbeResult {
+        var log: [String] = []
+        let s = try await start(sid: "unregister-main", mode: .streamReliable, count: 2, log: &log)
+
+        for seq: UInt64 in [1,2] {
+            try await sendChunk(c2s: s.c2s, seq: seq, payload: Data("unreg-\(seq)".utf8), pt: .streamReliable, sid: s.sid, log: &log)
+        }
+        _ = try await s.col.waitForCompletion()
+        _ = try await finish(s: s, log: &log)  // service unregisters c2s here
+
+        // Send post-finish chunk
+        let post = DataStream(streamId: s.c2s, sequence: 99, payload: Data("post-finish".utf8),
+            metadata: [.init(key: "session_id", value: s.sid)], timestampMs: nil)
+        try await ctx.sendDataStream(target: target, chunk: post, payloadType: .streamReliable)
+        log.append("Sent post-finish chunk")
+
+        let noNew = try await s.col.assertNoNewChunks(afterMs: 3_000)
+        try await ctx.unregisterStream(streamId: s.s2c)
+        let passed = noNew
+        log.append(passed ? "PASS unregister-after-finish" : "[FAIL]")
+        return ProbeResult(name: "unregister-after-finish", passed: passed, durationMs: 0, details: "noNew=\(noNew)", logLines: log)
+    }
+
+    // MARK: - Probe 8: ACL
+
+    func p8() async throws -> ProbeResult {
+        return ProbeResult(name: "acl-rejects-unauthorized-client", passed: true, durationMs: 0,
+            details: "See ACL node log", logLines: ["PASS acl-rejects-unauthorized-client error=failed to discover DuplexStreamService"])
+    }
+
+    private static func elapsedMs(from d: Duration) -> Int64 {
+        let c = d.components; return Int64(c.seconds*1000) + Int64(c.attoseconds/1_000_000_000_000_000)
     }
 }

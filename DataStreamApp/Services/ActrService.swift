@@ -143,7 +143,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         NSLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
 
         // Discover target synchronously so we can return immediately if not found
-        let targetType = try ActrType.fromStringRepr("demo2:DuplexStreamService:0.1.0")
+        let targetType = try ActrType.fromStringRepr("actrium:DuplexStreamService:0.1.0")
         let target: ActrId
         do {
             target = try await ctx.discover(targetType: targetType)

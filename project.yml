@@ -2,7 +2,7 @@ name: DataStreamApp
 options:
   bundleIdPrefix: com.actrium
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "26.2"
 settings:
   base:
     SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"

@@ -17,7 +17,7 @@ docs: <description>    # documentation
 
 ## Project Conventions
 
-- Deployment target: iOS 18.0+
+- Deployment target: iOS 26.2+
 - Swift 6 strict concurrency
 - Target arch: arm64 simulator only (ActrFFI.xcframework restriction)
 - Linked mode (`ActrNode.linked`), not packaged mode
