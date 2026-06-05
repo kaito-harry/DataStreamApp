@@ -1,0 +1,3 @@
+# actr.lock.toml — DataStreamApp
+# This project uses local generated protobuf sources and linked workloads.
+# No lock resolution is needed.

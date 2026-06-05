@@ -1,0 +1,3 @@
+version = 1
+[plugins]
+protoc-gen-actrframework-swift = "0.1.10"
