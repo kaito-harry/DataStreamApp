@@ -27,7 +27,7 @@ final class ActrService: ObservableObject {
 
         do {
             let configURL = try materializeRuntimeConfig()
-            let actorType = ActrType(manufacturer: "demo2", name: "DuplexStreamProbeClient", version: "1.0.0")
+            let actorType = ActrType(manufacturer: "actrium", name: "DuplexStreamProbeClient", version: "1.0.0")
 
             let handler = ProbeHandlerImpl(service: self)
             let workload = DynamicWorkload(
@@ -77,7 +77,7 @@ final class ActrService: ObservableObject {
 
         var req = Local_StartProbeRequest()
         req.probeName = "run-all"
-        req.targetType = "demo2:DuplexStreamService:1.0.0"
+        req.targetType = "actrium:DuplexStreamService:0.1.0"
 
         do {
             let resp: Local_StartProbeResponse = try await self.actorRef!.call(req)
@@ -143,7 +143,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         NSLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
 
         // Discover target synchronously so we can return immediately if not found
-        let targetType = try ActrType.fromStringRepr("demo2:DuplexStreamService:1.0.0")
+        let targetType = try ActrType.fromStringRepr("demo2:DuplexStreamService:0.1.0")
         let target: ActrId
         do {
             target = try await ctx.discover(targetType: targetType)
@@ -268,7 +268,7 @@ private func makeUnauthorizedConfig() throws -> URL {
 
     [webrtc]
     force_relay = false
-    stun_urls = ["stun:124.71.231.251:3487"]
+    stun_urls = ["stun:124.71.231.251:3478"]
 
     [hyper]
     data_dir = "\(dataURL.path)"

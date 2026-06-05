@@ -1,20 +1,20 @@
-# actr.toml — DataStreamApp Linked Runtime Configuration (test environment)
+# actr.toml — DataStreamApp Linked Runtime Configuration (dev environment)
 #
 # DataStreamApp is linked mode (ActrNode.linked), no actr build.
 # This file is read directly by ActrNode.linked() as runtime config.
 #
 # Actor type defined in Swift code:
-#   ActrType(manufacturer: "demo2", name: "DuplexStreamProbeClient", version: "1.0.0")
+#   ActrType(manufacturer: "actrium", name: "DuplexStreamProbeClient", version: "1.0.0")
 
 [signaling]
-url = "ws://124.71.231.251:9080/signaling/ws"
+url = "ws://192.168.212.112:8080/signaling/ws"
 
 [ais_endpoint]
-url = "http://124.71.231.251:9080/ais"
+url = "http://192.168.212.112:8080/ais"
 
 [deployment]
-realm_id = 33554433
-realm_secret = "rs_CA1ueOmjzSmmd8UCgJeefGoCYWPkj8Oh"
+realm_id = 1001
+realm_secret = "rs_TI1u7FdVIrp1giKCd580-Ap42mE7-kmx"
 
 [discovery]
 visible = true
@@ -22,15 +22,14 @@ visible = true
 [observability]
 filter_level = "info"
 tracing_enabled = false
-tracing_service_name = "datastream-app-ios"
 
 [webrtc]
 force_relay = false
-stun_urls = ["stun:124.71.231.251:3487"]
-turn_urls = []
+stun_urls = ["stun:192.168.212.112:3478"]
+turn_urls = ["turn:192.168.212.112:3478"]
 
 [acl]
 
 [[acl.rules]]
 permission = "allow"
-type = "demo2:DuplexStreamService:1.0.0"
+type = "actrium:DuplexStreamService:0.1.0"

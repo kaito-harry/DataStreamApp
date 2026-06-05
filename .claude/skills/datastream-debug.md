@@ -184,7 +184,7 @@ If the request is sent but no response arrives within timeout, the service may b
 → TURN server unavailable. Remove `turn_urls` from `actr.toml`:
 ```toml
 [webrtc]
-stun_urls = ["stun:124.71.231.251:3487"]
+	stun_urls = ["stun:124.71.231.251:3478"]
 turn_urls = []
 ```
 
