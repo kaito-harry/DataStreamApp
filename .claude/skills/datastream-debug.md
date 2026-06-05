@@ -120,23 +120,27 @@ SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" 
 | Realm ID | 1001 | 33554433 |
 | Target type | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` |
 | Client type | `actrium:DuplexStreamProbeClient:1.0.0` | `demo2:DuplexStreamProbeClient:1.0.0` |
-| Service home | `/home/actrium/datastream-service` | `/opt/actr-project/demo2_home/` |
+| Service home | `/home/actrium/datastream-service` (outer) | `/opt/actr-project/demo2_home/` |
 
 ## DataStreamService Deployment (dev)
 
+Two-layer structure (参照 echo-service):
+```
+/home/actrium/datastream-service/        ← 外层：actr.toml + keys
+└── my-datastream/                       ← 内层：git clone workload 项目
+```
+
 ```bash
-# 1. Copy source to dev server
-scp -r protos/ src/ Cargo.toml build.rs manifest.toml root@192.168.212.112:/home/actrium/datastream-service/
+# 1. Clone/update git repo (inner)
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/my-datastream && git pull'"
 
-# 2. Fix ownership & build on server
-ssh root@192.168.212.112 "chown -R actrium:actrium /home/actrium/datastream-service"
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service && cargo build --release --features cdylib'"
+# 2. Build cdylib
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/my-datastream && cargo build --release --features cdylib'"
 
-# 3. Package as .actr (use echo-service's registered key)
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service && /home/actrium/actr/target/release/actr build -m manifest.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/echo-service/mfr.keychain.json'"
+# 3. Package as .actr
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/my-datastream && /home/actrium/actr/target/release/actr build -m manifest.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/echo-service/mfr.keychain.json'"
 
-# 4. Stop old, start new
-ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr ps'"  # get WID
+# 4. Stop old, start new (from outer dir where actr.toml lives)
 ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr stop <WID>'"
 ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service && /home/actrium/actr/target/release/actr run -c actr.toml -d'"
 
@@ -181,7 +185,6 @@ Expected: should list the target service.
 ```bash
 # dev
 ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr ps'"
-# Check logs
 ssh root@192.168.212.112 "tail -50 /home/actrium/.actr/hyper/logs/actr-*.log"
 
 # test
