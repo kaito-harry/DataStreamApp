@@ -159,7 +159,15 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         // Run probes synchronously — ctx is only valid inside the handler
         let svc = service
         let runner = DataStreamProbeRunner(ctx: ctx, target: target)
-        let allResults = await runner.runAll()
+        var allResults = await runner.runAll()
+
+        // Run real ACL probe and replace p8 placeholder
+        if let aclResult = await runAclProbe() {
+            // Replace the placeholder p8 result (last in array)
+            if let p8Idx = allResults.lastIndex(where: { $0.name == "acl-rejects-unauthorized-client" }) {
+                allResults[p8Idx] = aclResult
+            }
+        }
 
         for r in allResults {
             let status = r.passed ? "PASS" : "FAIL"
@@ -204,8 +212,8 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
             // Wait a moment for onReady
             try? await Task.sleep(nanoseconds: 2_000_000_000)
 
-            // Try discover
-            let targetType = ActrType(manufacturer: "demo2", name: "DuplexStreamService", version: "1.0.0")
+            // Try discover the same target as the main probe
+            let targetType = try ActrType.fromStringRepr("actrium:DuplexStreamService:0.1.0")
             if let ctx = adapter.savedCtx {
                 do {
                     _ = try await ctx.discover(targetType: targetType)
@@ -248,16 +256,35 @@ private func makeUnauthorizedConfig() throws -> URL {
     let dataURL = appURL.appendingPathComponent("hyper-acl", isDirectory: true)
     try fileManager.createDirectory(at: dataURL, withIntermediateDirectories: true)
 
+    // CI mode: use ACTR_CI_HOST_IP env var for dynamic host IP
+    let ciHostIP = ProcessInfo.processInfo.environment["ACTR_CI_HOST_IP"]
+    let signalingHost: String
+    let realmID: Int
+    let realmSecret: String
+
+    if let ciIP = ciHostIP, !ciIP.isEmpty {
+        signalingHost = "\(ciIP):8080"
+        realmID = 1001
+        realmSecret = "rs_TI1u7FdVIrp1giKCd580-Ap42mE7-kmx"
+    } else {
+        signalingHost = "124.71.231.251:9080"
+        realmID = 33554433
+        realmSecret = "rs_CA1ueOmjzSmmd8UCgJeefGoCYWPkj8Oh"
+    }
+
+    // Extract host:port for STUN URL (drop port, always use 3478)
+    let stunHost = signalingHost.split(separator: ":").first.map(String.init) ?? signalingHost
+
     let config = """
     [signaling]
-    url = "ws://124.71.231.251:9080/signaling/ws"
+    url = "ws://\(signalingHost)/signaling/ws"
 
     [ais_endpoint]
-    url = "http://124.71.231.251:9080/ais"
+    url = "http://\(signalingHost)/ais"
 
     [deployment]
-    realm_id = 33554433
-    realm_secret = "rs_CA1ueOmjzSmmd8UCgJeefGoCYWPkj8Oh"
+    realm_id = \(realmID)
+    realm_secret = "\(realmSecret)"
 
     [discovery]
     visible = false
@@ -268,7 +295,7 @@ private func makeUnauthorizedConfig() throws -> URL {
 
     [webrtc]
     force_relay = false
-    stun_urls = ["stun:124.71.231.251:3478"]
+    stun_urls = ["stun:\(stunHost):3478"]
 
     [hyper]
     data_dir = "\(dataURL.path)"

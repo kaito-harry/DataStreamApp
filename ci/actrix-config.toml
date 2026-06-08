@@ -1,0 +1,57 @@
+# actrix CI configuration — ephemeral test instance for e2e CI
+#
+# Enable: Signaling (1) + STUN (2) + AIS (8) = 11
+enable = 11
+
+name = "actrix-ci"
+
+env = "dev"
+
+sqlite_path = "/tmp/actrix-ci/db"
+
+location_tag = "ci,github,runner"
+
+actrix_shared_key = "ci-test-shared-key-minimum-32-chars-!"
+
+[bind.http]
+domain_name = "localhost"
+advertised_ip = "127.0.0.1"
+ip = "0.0.0.0"
+port = 8080
+
+[bind.ice]
+domain_name = "localhost"
+advertised_ip = "127.0.0.1"
+ip = "0.0.0.0"
+port = 3478
+
+[services.signaling]
+[services.signaling.server]
+ws_path = "/signaling"
+
+[services.ais]
+[services.ais.server]
+signaling_heartbeat_interval_secs = 5
+token_ttl_secs = 3600
+
+[turn]
+advertised_ip = "127.0.0.1"
+advertised_port = 3478
+relay_port_range = "49152-65535"
+realm = "localhost"
+
+[recording]
+service_name = "actrix-ci"
+[recording.observability]
+filter = "digest"
+
+[control]
+head = "admin_ui"
+[control.admin_ui]
+password = "ci-test-pass"
+session_expiry_secs = 86400
+
+# ACL: allow CI service types
+[acl]
+enabled = true
+default_policy = "deny"

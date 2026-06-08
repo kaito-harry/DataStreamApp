@@ -278,11 +278,11 @@ final class DataStreamProbeRunner: @unchecked Sendable {
         return ProbeResult(name: "unregister-after-finish", passed: passed, durationMs: 0, details: "noNew=\(noNew)", logLines: log)
     }
 
-    // MARK: - Probe 8: ACL
+    // MARK: - Probe 8: ACL (replaced at runtime by ProbeHandlerImpl.runAclProbe)
 
     func p8() async throws -> ProbeResult {
-        return ProbeResult(name: "acl-rejects-unauthorized-client", passed: true, durationMs: 0,
-            details: "See ACL node log", logLines: ["PASS acl-rejects-unauthorized-client error=failed to discover DuplexStreamService"])
+        return ProbeResult(name: "acl-rejects-unauthorized-client", passed: false, durationMs: 0,
+            details: "ACL probe not run — should be replaced by ProbeHandlerImpl", logLines: ["[FAIL] ACL probe not wired"])
     }
 
     private static func elapsedMs(from d: Duration) -> Int64 {
