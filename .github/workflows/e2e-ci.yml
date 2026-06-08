@@ -8,10 +8,7 @@ on:
 jobs:
   e2e:
     runs-on: macos-latest
-    timeout-minutes: 30
-
-    env:
-      ACTR_CI_HOST_IP: ""  # resolved at runtime
+    timeout-minutes: 25
 
     steps:
       # ── Setup ──────────────────────────────────────────────
@@ -22,28 +19,19 @@ jobs:
           echo "host_ip=$HOST_IP" >> $GITHUB_OUTPUT
           echo "Resolved host IP: $HOST_IP"
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout DataStreamApp
+        uses: actions/checkout@v4
 
       - name: Install xcodegen
         run: brew install xcodegen
 
-      # ── Build & start actrix ───────────────────────────────
-      - name: Checkout actrix
-        uses: actions/checkout@v4
-        with:
-          repository: Actrium/actrix
-          path: actrix
-          token: ${{ secrets.ACTRIX_PAT }}
-
-      - name: Build actrix
-        run: cd actrix && cargo build --release
-
+      # ── Start actrix (pre-built binary) ────────────────────
       - name: Start actrix
         run: |
+          chmod +x ci/bin/actrix ci/bin/actr
           mkdir -p /tmp/actrix-ci/db
           cp ci/actrix-config.toml /tmp/actrix-ci/config.toml
-          actrix/target/release/actrix --config /tmp/actrix-ci/config.toml &
+          ./ci/bin/actrix --config /tmp/actrix-ci/config.toml &
           ACTRIX_PID=$!
           echo "ACTRIX_PID=$ACTRIX_PID" >> $GITHUB_ENV
 
@@ -62,50 +50,22 @@ jobs:
 
       - name: Create CI realm
         run: |
-          # Login to admin API
           TOKEN=$(curl -s -X POST http://localhost:8080/admin/api/auth/login \
             -H 'Content-Type: application/json' -d '{"password":"ci-test-pass"}' | jq -r '.token')
 
-          # Create realm 1001
           curl -s -X POST http://localhost:8080/admin/api/realms \
             -H "Authorization: Bearer $TOKEN" \
             -H 'Content-Type: application/json' \
             -d '{"name":"ci-test-realm","enabled":true}'
 
-          # Get realm secret and add ACL rules
-          echo "Realm 1001 created (or already exists)"
+          echo "Realm 1001 ready"
 
-      # ── Build & start datastream-service ────────────────────
+      # ── Start datastream-service (pre-built .actr) ─────────
       - name: Checkout datastream-workload
         uses: actions/checkout@v4
         with:
           repository: kaito-harry/datastream-workload
           path: datastream-workload
-
-      - name: Build and package datastream-service
-        run: |
-          cd datastream-workload
-
-          # If pre-built .actr exists in dist/, use it. Otherwise build from source.
-          if ls dist/*.actr 2>/dev/null; then
-            echo "Using pre-built .actr from dist/"
-          else
-            echo "Building from source..."
-            cargo build --release --features cdylib
-
-            # Install actr-cli from actrix repo for packaging
-            cargo install --path actrix/cli --quiet
-
-            # Package: use CI key or skip signing for e2e test
-            actr keygen -o /tmp/actrix-ci/ci-keychain.json 2>/dev/null || true
-            actr build -m manifest-cdylib.toml \
-              -t $(rustc -vV | grep host | awk '{print $2}') \
-              --no-compile \
-              -k /tmp/actrix-ci/ci-keychain.json
-          fi
-
-          ACTR_FILE=$(find dist -name '*.actr' | head -1)
-          echo "Using .actr: $ACTR_FILE"
 
       - name: Start datastream-service
         run: |
@@ -133,23 +93,19 @@ jobs:
 
           SVCTOML
 
-          # Start the service using actr run
           cd datastream-workload
-          actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1
+          ../ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1
           echo "datastream-service started"
 
           # Wait for registration
           sleep 5
 
-          # Verify registration
+          # Verify
           TOKEN=$(curl -s -X POST http://localhost:8080/admin/api/auth/login \
             -H 'Content-Type: application/json' -d '{"password":"ci-test-pass"}' | jq -r '.token')
           curl -s http://localhost:8080/admin/api/node -H "Authorization: Bearer $TOKEN" | jq '.services'
 
       # ── Build DataStreamApp ─────────────────────────────────
-      - name: Checkout DataStreamApp
-        uses: actions/checkout@v4
-
       - name: Inject host IP and build
         id: build
         run: |
@@ -158,7 +114,6 @@ jobs:
           # Replace __HOST_IP__ in CI actr.toml template
           sed "s/__HOST_IP__/${HOST_IP}/g" ci/actr-data-stream-app.toml > actr.toml
 
-          # Generate Xcode project
           xcodegen generate
 
           # Find or create arm64 simulator
@@ -168,16 +123,13 @@ jobs:
 
           xcrun simctl create "$SIM_NAME" "$SIM_TYPE" "$SIM_RUNTIME" 2>/dev/null || true
           SIM_UDID=$(xcrun simctl list devices | grep "$SIM_NAME" | head -1 | grep -oE '[A-F0-9]{8}-([A-F0-9]{4}-){3}[A-F0-9]{12}')
-
           echo "SIM_UDID=$SIM_UDID"
 
-          # Build
           xcodebuild -project DataStreamApp.xcodeproj -scheme DataStreamApp \
             -destination "platform=iOS Simulator,id=$SIM_UDID" \
             -derivedDataPath /tmp/dd \
             build 2>&1 | tail -20
 
-          # Find .app
           APP_PATH=$(find /tmp/dd -name "DataStreamApp.app" -type d | head -1)
           echo "APP_PATH=$APP_PATH"
           echo "sim_udid=$SIM_UDID" >> $GITHUB_OUTPUT
@@ -191,20 +143,16 @@ jobs:
           SIM_UDID="${{ steps.build.outputs.sim_udid }}"
           APP_PATH="${{ steps.build.outputs.app_path }}"
 
-          # Boot simulator
           xcrun simctl boot "$SIM_UDID" || true
           xcrun simctl bootstatus "$SIM_UDID" -b || sleep 5
-
-          # Install app
           xcrun simctl install "$SIM_UDID" "$APP_PATH"
 
-          # Launch with auto-run + CI host IP for ACL probe
           SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 \
           SIMCTL_CHILD_ACTR_CI_HOST_IP="$HOST_IP" \
             xcrun simctl launch --console "$SIM_UDID" com.actrium.DataStreamApp 2>&1 | tee /tmp/probe-output.log &
           SIMCTL_PID=$!
 
-          # Wait for "Done:" marker or timeout
+          # Wait for "Done:" or timeout (120s)
           TIMEOUT=120
           ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
@@ -245,7 +193,6 @@ jobs:
           else
             echo ""
             echo "❌ E2E FAILED: Expected 8/8, got $PASS_COUNT PASS, $FAIL_COUNT FAIL"
-            echo "--- Full output ---"
             cat /tmp/probe-output.log
             exit 1
           fi
