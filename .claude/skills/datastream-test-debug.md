@@ -1,6 +1,6 @@
 ---
-name: datastream-debug
-description: Debug DataStreamApp, check remote actrix server logs, verify service registration, diagnose WebRTC connectivity issues. Use when probes fail, service discovery returns nothing, or WebRTC connection issues arise.
+name: datastream-test-debug
+description: Debug DataStreamApp in test environment (124.71.231.251:9080), check remote actrix server logs, verify service registration, diagnose WebRTC connectivity. Use when probes fail, service discovery returns nothing, or WebRTC connection issues arise.
 ---
 
 # DataStreamApp Debug Skill
