@@ -33,17 +33,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Actrium/actrix
-          path: /tmp/actrix
+          path: actrix
           token: ${{ secrets.ACTRIX_PAT }}
 
       - name: Build actrix
-        run: cd /tmp/actrix && cargo build --release
+        run: cd actrix && cargo build --release
 
       - name: Start actrix
         run: |
           mkdir -p /tmp/actrix-ci/db
           cp ci/actrix-config.toml /tmp/actrix-ci/config.toml
-          /tmp/actrix/target/release/actrix --config /tmp/actrix-ci/config.toml &
+          actrix/target/release/actrix --config /tmp/actrix-ci/config.toml &
           ACTRIX_PID=$!
           echo "ACTRIX_PID=$ACTRIX_PID" >> $GITHUB_ENV
 
@@ -80,11 +80,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: kaito-harry/datastream-workload
-          path: /tmp/datastream-workload
+          path: datastream-workload
 
       - name: Build and package datastream-service
         run: |
-          cd /tmp/datastream-workload
+          cd datastream-workload
 
           # If pre-built .actr exists in dist/, use it. Otherwise build from source.
           if ls dist/*.actr 2>/dev/null; then
@@ -94,7 +94,7 @@ jobs:
             cargo build --release --features cdylib
 
             # Install actr-cli from actrix repo for packaging
-            cargo install --path /tmp/actrix/cli --quiet
+            cargo install --path actrix/cli --quiet
 
             # Package: use CI key or skip signing for e2e test
             actr keygen -o /tmp/actrix-ci/ci-keychain.json 2>/dev/null || true
@@ -134,7 +134,7 @@ jobs:
           SVCTOML
 
           # Start the service using actr run
-          cd /tmp/datastream-workload
+          cd datastream-workload
           actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1
           echo "datastream-service started"
 
@@ -256,4 +256,4 @@ jobs:
         run: |
           kill $ACTRIX_PID 2>/dev/null || true
           xcrun simctl shutdown "${{ steps.build.outputs.sim_udid }}" 2>/dev/null || true
-          rm -rf /tmp/actrix-ci /tmp/datastream-workload /tmp/dd /tmp/actrix
+          rm -rf /tmp/actrix-ci /tmp/dd
