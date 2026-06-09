@@ -1,7 +1,7 @@
 # actrix CI configuration — ephemeral test instance for e2e CI
 #
-# Enable: Signaling (1) + STUN (2) + AIS (8) = 11
-enable = 11
+# Enable: Signaling (1) + STUN (2) + AIS (8) + Signer (16) = 27
+enable = 27
 
 name = "actrix-ci"
 
@@ -33,6 +33,13 @@ ws_path = "/signaling"
 [services.ais.server]
 signaling_heartbeat_interval_secs = 5
 token_ttl_secs = 3600
+
+[services.signer]
+[services.signer.storage]
+backend = "sqlite"
+key_ttl_seconds = 3600
+[services.signer.storage.sqlite]
+path = "/tmp/actrix-ci/db/ks.db"
 
 [turn]
 advertised_ip = "127.0.0.1"
