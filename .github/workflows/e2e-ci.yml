@@ -228,16 +228,33 @@ jobs:
           sleep 2
           REALM_ID="${{ steps.realm.outputs.realm_id }}"
           REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
+          HOST_IP="${{ steps.host-ip.outputs.host_ip }}"
           cat > /tmp/actrix-ci/service-actr.toml << SVCTOML
           [signaling]
           url = "ws://127.0.0.1:8080/signaling/ws"
+
+          [ais_endpoint]
+          url = "http://127.0.0.1:8080/ais"
+
           [deployment]
           realm_id = $REALM_ID
           realm_secret = "$REALM_SECRET"
+
           [discovery]
           visible = true
+
+          [observability]
+          filter_level = "info"
+          tracing_enabled = false
+
+          [webrtc]
+          force_relay = false
+          stun_urls = ["stun:${HOST_IP}:3478"]
+          turn_urls = ["turn:${HOST_IP}:3478"]
+
           [package]
           path = "$(pwd)/ci/datastream-service.actr"
+
           [[trust]]
           kind = "static"
           pubkey_file = "$(pwd)/ci/dev-pubkey.json"
