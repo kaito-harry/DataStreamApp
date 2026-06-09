@@ -63,21 +63,31 @@ jobs:
           done
 
       - name: Create CI realm
+        id: realm
         run: |
           TOKEN=$(curl -s -X POST http://localhost:8080/admin/api/auth/login \
             -H 'Content-Type: application/json' -d '{"password":"ci-test-pass"}' | jq -r '.token')
 
-          curl -s -X POST http://localhost:8080/admin/api/realms \
+          RESP=$(curl -s -X POST http://localhost:8080/admin/api/realms \
             -H "Authorization: Bearer $TOKEN" \
             -H 'Content-Type: application/json' \
-            -d '{"name":"ci-test-realm","enabled":true}'
+            -d '{"name":"ci-test-realm","enabled":true}')
 
-          echo "Realm 1001 ready"
+          echo "$RESP" | jq .
+
+          REALM_ID=$(echo "$RESP" | jq -r '.realm.realm_id')
+          REALM_SECRET=$(echo "$RESP" | jq -r '.realm_secret')
+          echo "realm_id=$REALM_ID" >> $GITHUB_OUTPUT
+          echo "realm_secret=$REALM_SECRET" >> $GITHUB_OUTPUT
+          echo "Realm created: id=$REALM_ID"
 
       # ── Start datastream-service (pre-built .actr) ─────────
       - name: Start datastream-service
         run: |
-          cat > /tmp/actrix-ci/service-actr.toml << 'SVCTOML'
+          REALM_ID="${{ steps.realm.outputs.realm_id }}"
+          REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
+
+          cat > /tmp/actrix-ci/service-actr.toml << SVCTOML
           [signaling]
           url = "ws://127.0.0.1:8080/signaling/ws"
 
@@ -85,8 +95,8 @@ jobs:
           url = "http://127.0.0.1:8080/ais"
 
           [deployment]
-          realm_id = 1001
-          realm_secret = "rs_TI1u7FdVIrp1giKCd580-Ap42mE7-kmx"
+          realm_id = $REALM_ID
+          realm_secret = "$REALM_SECRET"
 
           [discovery]
           visible = true
@@ -107,6 +117,9 @@ jobs:
           pubkey_file = "ci/dev-pubkey.json"
           SVCTOML
 
+          echo "Service config (realm_id=$REALM_ID):"
+          cat /tmp/actrix-ci/service-actr.toml
+
           ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1
           echo "datastream-service started"
 
@@ -123,9 +136,12 @@ jobs:
         id: build
         run: |
           HOST_IP="${{ steps.host-ip.outputs.host_ip }}"
+          REALM_ID="${{ steps.realm.outputs.realm_id }}"
+          REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
 
-          # Replace __HOST_IP__ in CI actr.toml template
-          sed "s/__HOST_IP__/${HOST_IP}/g" ci/actr-data-stream-app.toml > actr.toml
+          # Replace placeholders in CI actr.toml template
+          sed "s/__HOST_IP__/${HOST_IP}/g; s/__REALM_ID__/${REALM_ID}/g; s/__REALM_SECRET__/${REALM_SECRET}/g" \
+            ci/actr-data-stream-app.toml > actr.toml
 
           xcodegen generate
 

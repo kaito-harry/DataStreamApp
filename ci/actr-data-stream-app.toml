@@ -1,7 +1,7 @@
 # actr.toml — DataStreamApp CI Runtime Configuration
 #
-# __HOST_IP__ is replaced at CI runtime with the macOS host IP
-# so the iOS Simulator can reach actrix on the host.
+# __HOST_IP__, __REALM_ID__, __REALM_SECRET__ are replaced at CI runtime.
+# The iOS Simulator reaches actrix on the macOS host.
 
 [signaling]
 url = "ws://__HOST_IP__:8080/signaling/ws"
@@ -10,8 +10,8 @@ url = "ws://__HOST_IP__:8080/signaling/ws"
 url = "http://__HOST_IP__:8080/ais"
 
 [deployment]
-realm_id = 1001
-realm_secret = "rs_TI1u7FdVIrp1giKCd580-Ap42mE7-kmx"
+realm_id = __REALM_ID__
+realm_secret = "__REALM_SECRET__"
 
 [discovery]
 visible = true
