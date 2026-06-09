@@ -72,12 +72,6 @@ jobs:
           echo "Realm 1001 ready"
 
       # ── Start datastream-service (pre-built .actr) ─────────
-      - name: Checkout datastream-workload
-        uses: actions/checkout@v4
-        with:
-          repository: kaito-harry/datastream-workload
-          path: datastream-workload
-
       - name: Start datastream-service
         run: |
           cat > /tmp/actrix-ci/service-actr.toml << 'SVCTOML'
@@ -102,10 +96,15 @@ jobs:
           force_relay = false
           stun_urls = ["stun:127.0.0.1:3478"]
 
+          [package]
+          path = "ci/datastream-service.actr"
+
+          [[trust]]
+          kind = "static"
+          pubkey_file = "ci/dev-pubkey.json"
           SVCTOML
 
-          cd datastream-workload
-          ../ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1
+          ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1
           echo "datastream-service started"
 
           # Wait for registration
