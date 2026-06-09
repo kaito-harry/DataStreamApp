@@ -222,29 +222,13 @@ jobs:
           SIM_NAME="${{ steps.build.outputs.sim_name }}"
           APP_PATH="${{ steps.build.outputs.app_path }}"
 
-          # Verify service is still registered before launching probes
-          echo "=== Pre-probe service check ==="
-          SERVICE_ALIVE=false
-          if pgrep -f "actr.*service-actr" > /dev/null 2>&1; then
-            echo "datastream-service process alive"
-            SERVICE_ALIVE=true
-          else
-            echo "datastream-service process not found"
-          fi
-
-          echo "=== Signaling cache (pre-probe) ==="
-          CACHE_COUNT=$(sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT COUNT(*) FROM service_registry WHERE name='DuplexStreamService' AND status='Available';" 2>/dev/null || echo "0")
-          echo "Registered DuplexStreamService entries: $CACHE_COUNT"
-
-          if [ "$CACHE_COUNT" = "0" ] || [ "$SERVICE_ALIVE" != "true" ]; then
-            echo "Service not in cache or not alive, restarting..."
-            if $SERVICE_ALIVE; then
-              pkill -f "actr.*service-actr" 2>/dev/null || true
-              sleep 2
-            fi
-            REALM_ID="${{ steps.realm.outputs.realm_id }}"
-            REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
-            cat > /tmp/actrix-ci/service-actr.toml << SVCTOML
+          # Always restart datastream-service to ensure fresh signaling connection
+          echo "=== Restarting datastream-service ==="
+          pkill -f "actr.*service-actr" 2>/dev/null || true
+          sleep 2
+          REALM_ID="${{ steps.realm.outputs.realm_id }}"
+          REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
+          cat > /tmp/actrix-ci/service-actr.toml << SVCTOML
           [signaling]
           url = "ws://127.0.0.1:8080/signaling/ws"
           [deployment]
@@ -258,18 +242,24 @@ jobs:
           kind = "static"
           pubkey_file = "$(pwd)/ci/dev-pubkey.json"
           SVCTOML
-            ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d > /tmp/actr-output.log 2>&1
-            echo "Waiting for service to register..."
-            for i in $(seq 1 15); do
-              sleep 2
-              C=$(sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT COUNT(*) FROM service_registry WHERE name='DuplexStreamService' AND status='Available';" 2>/dev/null || echo "0")
-              echo "  attempt $i: $C entries"
-              if [ "$C" -gt 0 ]; then
-                echo "Service registered!"
-                break
-              fi
-            done
-          fi
+          echo "=== Service config ==="
+          cat /tmp/actrix-ci/service-actr.toml
+          ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d > /tmp/actr-restart.log 2>&1
+          echo "=== actr run output ==="
+          cat /tmp/actr-restart.log
+          echo "Waiting for service to register..."
+          for i in $(seq 1 20); do
+            sleep 2
+            C=$(sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT COUNT(*) FROM service_registry WHERE name='DuplexStreamService' AND status='Available';" 2>/dev/null || echo "0")
+            echo "  attempt $i: $C entries"
+            if [ "$C" -gt 0 ]; then
+              echo "Service registered!"
+              break
+            fi
+          done
+
+          echo "=== Signaling cache ==="
+          sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM service_registry;" 2>/dev/null || echo "(no cache)"
 
           xcrun simctl boot "$SIM_NAME" || true
           xcrun simctl bootstatus "$SIM_NAME" -b || sleep 10
