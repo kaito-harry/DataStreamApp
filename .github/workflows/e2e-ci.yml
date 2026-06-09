@@ -49,7 +49,6 @@ jobs:
           ACTRIX_PID=$!
           echo "ACTRIX_PID=$ACTRIX_PID" >> $GITHUB_ENV
 
-          # Wait for actrix to be ready
           for i in $(seq 1 30); do
             if curl -s http://localhost:8080/health > /dev/null 2>&1; then
               echo "actrix ready (attempt $i)"
@@ -74,18 +73,19 @@ jobs:
             -d '{"name":"ci-test-realm","enabled":true}')
 
           echo "$RESP" | jq .
-
           REALM_ID=$(echo "$RESP" | jq -r '.realm.realm_id')
           REALM_SECRET=$(echo "$RESP" | jq -r '.realm_secret')
           echo "realm_id=$REALM_ID" >> $GITHUB_OUTPUT
           echo "realm_secret=$REALM_SECRET" >> $GITHUB_OUTPUT
           echo "Realm created: id=$REALM_ID"
 
-      # ── Start datastream-service (pre-built .actr) ─────────
+      # ── Start datastream-service ────────────────────────────
       - name: Start datastream-service
         run: |
           REALM_ID="${{ steps.realm.outputs.realm_id }}"
           REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
+          PACKAGE_PATH="$(pwd)/ci/datastream-service.actr"
+          PUBKEY_PATH="$(pwd)/ci/dev-pubkey.json"
 
           cat > /tmp/actrix-ci/service-actr.toml << SVCTOML
           [signaling]
@@ -110,33 +110,25 @@ jobs:
           stun_urls = ["stun:127.0.0.1:3478"]
 
           [package]
-          path = "ci/datastream-service.actr"
+          path = "$PACKAGE_PATH"
 
           [[trust]]
           kind = "static"
-          pubkey_file = "ci/dev-pubkey.json"
+          pubkey_file = "$PUBKEY_PATH"
           SVCTOML
 
           echo "=== Service config ==="
           cat /tmp/actrix-ci/service-actr.toml
 
-          echo "=== Starting actr run ==="
           ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1 || {
-            echo "=== actr run failed, checking child log ==="
-            # Find the most recent child log
+            echo "=== Child log ==="
             CHILD_LOG=$(ls -t /Users/runner/.actr/hyper/logs/actr-*.log 2>/dev/null | head -1)
-            if [ -n "$CHILD_LOG" ]; then
-              echo "Child log: $CHILD_LOG"
-              cat "$CHILD_LOG"
-            fi
+            [ -n "$CHILD_LOG" ] && cat "$CHILD_LOG"
             exit 1
           }
           echo "datastream-service started"
 
-          # Wait for registration
           sleep 5
-
-          # Verify
           TOKEN=$(curl -s -X POST http://localhost:8080/admin/api/auth/login \
             -H 'Content-Type: application/json' -d '{"password":"ci-test-pass"}' | jq -r '.token')
           curl -s http://localhost:8080/admin/api/node -H "Authorization: Bearer $TOKEN" | jq '.services'
