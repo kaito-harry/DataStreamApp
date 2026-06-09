@@ -131,15 +131,19 @@ jobs:
           echo "=== Service config ==="
           cat /tmp/actrix-ci/service-actr.toml
 
-          ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1 || {
-            echo "=== Child log ==="
-            CHILD_LOG=$(ls -t /Users/runner/.actr/hyper/logs/actr-*.log 2>/dev/null | head -1)
-            [ -n "$CHILD_LOG" ] && cat "$CHILD_LOG"
+          ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml > /tmp/datastream-service.log 2>&1 &
+          SERVICE_PID=$!
+          echo "datastream-service PID: $SERVICE_PID"
+
+          sleep 15
+          echo "=== datastream-service startup log ==="
+          cat /tmp/datastream-service.log
+          if ! kill -0 $SERVICE_PID 2>/dev/null; then
+            echo "ERROR: datastream-service process exited"
             exit 1
-          }
+          fi
           echo "datastream-service started"
 
-          sleep 5
           TOKEN=$(curl -s -X POST http://localhost:8080/admin/api/auth/login \
             -H 'Content-Type: application/json' -d '{"password":"ci-test-pass"}' | jq -r '.token')
           curl -s http://localhost:8080/admin/api/node -H "Authorization: Bearer $TOKEN" | jq '.services'
