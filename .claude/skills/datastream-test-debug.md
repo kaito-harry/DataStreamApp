@@ -115,9 +115,9 @@ SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" 
 
 ## Environments
 
-| Key | dev | test |
-|-----|-----|------|
-| Git branch | `dev` | `test` |
+| Key | zq-actrix-zq-service | test |
+|-----|-----------------------|------|
+| Git branch | `zq-actrix-zq-service` | `test` |
 | Actrix | `192.168.212.112:8080` | `124.71.231.251:9080` |
 | Realm ID | 1001 | 33554433 |
 | Target type | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` |
@@ -125,7 +125,7 @@ SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" 
 | Service home | `/home/actrium/datastream-service` | `/home/actrium/datastream-service-hw` |
 | Registry DB | zq `/opt/actrix/database/signaling_cache.db` | hw `/opt/actr-project/actrix/database/signaling_cache.db` |
 
-## DataStreamService Deployment (dev)
+## DataStreamService Deployment (zq-actrix-zq-service)
 
 Two-layer structure (参照 echo-service):
 ```

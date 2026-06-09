@@ -4,8 +4,8 @@ iOS SwiftUI App that validates branch-specific DuplexStreamService connectivity.
 
 ## Overview
 
-| Item | dev branch | test branch | hw-actrix-unknown-service branch |
-|------|------------|-------------|---------------------------------|
+| Item | zq-actrix-zq-service branch | test branch | hw-actrix-unknown-service branch |
+|------|-------------------------------|-------------|---------------------------------|
 | Flow | Swift iOS app -> zq actrix -> zq `datastream-service` | Swift iOS app -> hw actrix -> zq `datastream-service-hw` | Swift iOS app -> hw actrix -> any registered datastream service |
 | Actrix | `192.168.212.112:8080` | `124.71.231.251:9080` | `124.71.231.251:9080` |
 | Target | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` | `demo2:DuplexStreamService:1.0.0` |
@@ -122,7 +122,7 @@ The app will:
 
 ## 8 Probes
 
-These probes apply to the `dev` and `test` branches. The `hw-actrix-unknown-service` branch stops after target discovery.
+These probes apply to the `zq-actrix-zq-service` and `test` branches. The `hw-actrix-unknown-service` branch stops after target discovery.
 
 | # | Name | What It Validates |
 |---|------|-------------------|
@@ -152,7 +152,7 @@ ContentView → runAllProbes()
           → ctx.discover("<branch-specific DuplexStreamService>")
           → branch-specific verification
             → discovery-only result             [hw-actrix-unknown-service]
-            → DataStreamProbeRunner.runAll()    [dev/test]
+            → DataStreamProbeRunner.runAll()    [zq-actrix-zq-service/test]
               → ctx.callRaw(StartDuplexStream)  [WebRTC RPC]
               → ctx.registerStream(s2c, callback)
               → ctx.sendDataStream(c2s, chunks)
