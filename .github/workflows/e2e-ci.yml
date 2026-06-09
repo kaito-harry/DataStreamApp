@@ -280,6 +280,15 @@ jobs:
           echo "=== Signaling cache ==="
           sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM service_registry;" 2>/dev/null || echo "(no cache)"
 
+          echo "=== Child logs (restarted service) ==="
+          for f in /Users/runner/.actr/hyper/logs/actr-*.log; do
+            [ -f "$f" ] && echo "--- $f ---" && tail -100 "$f"
+          done
+
+          echo "=== actrix node services ==="
+          TOKEN=$(curl -s -X POST http://localhost:8080/admin/api/auth/login             -H 'Content-Type: application/json' -d '{"password":"ci-test-pass"}' | jq -r '.token')
+          curl -s http://localhost:8080/admin/api/node -H "Authorization: Bearer $TOKEN" | jq '.services' 
+
           xcrun simctl boot "$SIM_NAME" || true
           xcrun simctl bootstatus "$SIM_NAME" -b || sleep 10
           xcrun simctl install booted "$APP_PATH"
