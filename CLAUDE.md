@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-iOS SwiftUI probe client for `demo2:DuplexStreamService:1.0.0`.
+iOS SwiftUI probe client for branch-specific DuplexStreamService environments.
 
 ## Conventional Commits
 
@@ -92,14 +92,15 @@ protoc \
 
 ## Environment
 
-| Key | Value |
-|-----|-------|
-| Realm | 33554433 |
-| Signaling | `ws://124.71.231.251:9080/signaling/ws` |
-| AIS | `http://124.71.231.251:9080/ais` |
-| Target service | `demo2:DuplexStreamService:1.0.0` |
-| Client identity | `demo2:DuplexStreamProbeClient:1.0.0` |
-| Unauthorized (ACL test) | `demo2:UnauthorizedStreamProbeClient:1.0.0` |
+| Key | dev branch | test branch |
+|-----|------------|-------------|
+| Flow | Swift iOS app -> zq actrix -> zq `datastream-service` | Swift iOS app -> hw actrix -> zq `datastream-service-hw` |
+| Realm | `1001` | `33554433` |
+| Signaling | `ws://192.168.212.112:8080/signaling/ws` | `ws://124.71.231.251:9080/signaling/ws` |
+| AIS | `http://192.168.212.112:8080/ais` | `http://124.71.231.251:9080/ais` |
+| Target service | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` |
+| Client identity | `actrium:DuplexStreamProbeClient:1.0.0` | `demo2:DuplexStreamProbeClient:1.0.0` |
+| Service home | `/home/actrium/datastream-service` | `/home/actrium/datastream-service-hw` |
 
 ## Test Server (actrix)
 
@@ -139,6 +140,11 @@ curl -s http://124.71.231.251:9080/admin/api/node -H "Authorization: Bearer $TOK
 ```
 
 > ⚠️ **CRITICAL: Read-only access only.** Never modify any code, config, or data on the test server (124.71.231.251). Only query, read, and inspect. This server is a shared test environment.
+
+## zq Service Homes
+
+`dev` uses `/home/actrium/datastream-service`.
+`test` uses `/home/actrium/datastream-service-hw`, which is deployed on zq but registers into hw actrix.
 
 ## Reference Doc
 
