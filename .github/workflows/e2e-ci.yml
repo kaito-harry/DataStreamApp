@@ -22,6 +22,17 @@ jobs:
       - name: Checkout DataStreamApp
         uses: actions/checkout@v4
 
+      - name: Select Xcode 26
+        run: |
+          XCODE_PATH=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | head -1)
+          if [ -z "$XCODE_PATH" ]; then
+            echo "Xcode 26 not found at /Applications/Xcode_26*.app; falling back to default Xcode"
+            XCODE_PATH="/Applications/Xcode.app"
+          fi
+          echo "Selecting $XCODE_PATH"
+          sudo xcode-select --switch "$XCODE_PATH"
+          xcodebuild -version
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -119,11 +130,23 @@ jobs:
           # Find or create arm64 simulator
           SIM_NAME="iPhone-17-Pro-Max-CI"
           SIM_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max"
-          SIM_RUNTIME=$(xcrun simctl list runtimes available | grep "iOS.*26" | head -1 | grep -oE 'com.apple.CoreSimulator.SimRuntime.iOS-[0-9-]+')
+          SIM_RUNTIME=$(xcrun simctl list runtimes available | grep -i "ios.*26" | head -1 | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+')
+
+          if [ -z "$SIM_RUNTIME" ]; then
+            echo "ERROR: No iOS 26 runtime found. Available runtimes:"
+            xcrun simctl list runtimes available | grep -i ios || true
+            exit 1
+          fi
+          echo "Using runtime: $SIM_RUNTIME"
 
           xcrun simctl create "$SIM_NAME" "$SIM_TYPE" "$SIM_RUNTIME" 2>/dev/null || true
           SIM_UDID=$(xcrun simctl list devices | grep "$SIM_NAME" | head -1 | grep -oE '[A-F0-9]{8}-([A-F0-9]{4}-){3}[A-F0-9]{12}')
           echo "SIM_UDID=$SIM_UDID"
+          if [ -z "$SIM_UDID" ]; then
+            echo "ERROR: Failed to find or create simulator $SIM_NAME"
+            xcrun simctl list devices | grep -i "iphone.*17" || true
+            exit 1
+          fi
 
           xcodebuild -project DataStreamApp.xcodeproj -scheme DataStreamApp \
             -destination "platform=iOS Simulator,id=$SIM_UDID" \

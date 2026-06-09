@@ -52,6 +52,19 @@ password = "ci-test-pass"
 session_expiry_secs = 86400
 
 # ACL: allow CI service types
+#
+# actrix server-side ACL: controls which actor types can register.
+# Allow: datastream-service + probe client.
+# Deny by default: unauthorized client (demo2:UnauthorizedStreamProbeClient:1.0.0)
+# is blocked, which is what we want for probe 8.
 [acl]
 enabled = true
 default_policy = "deny"
+
+[[acl.rules]]
+permission = "allow"
+type = "actrium:DuplexStreamService:0.1.0"
+
+[[acl.rules]]
+permission = "allow"
+type = "actrium:DuplexStreamProbeClient:1.0.0"
