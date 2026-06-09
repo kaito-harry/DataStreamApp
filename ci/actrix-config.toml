@@ -1,7 +1,7 @@
 # actrix CI configuration — ephemeral test instance for e2e CI
 #
-# Enable: Signaling (1) + STUN (2) + AIS (8) + Signer (16) = 27
-enable = 27
+# Enable: Signaling (1) + STUN (2) + TURN (4) + AIS (8) + Signer (16) = 31
+enable = 31
 
 name = "actrix-ci"
 
@@ -59,11 +59,6 @@ password = "ci-test-pass"
 session_expiry_secs = 86400
 
 # ACL: allow CI service types
-#
-# actrix server-side ACL: controls which actor types can register.
-# Allow: datastream-service + probe client.
-# Deny by default: unauthorized client (demo2:UnauthorizedStreamProbeClient:1.0.0)
-# is blocked, which is what we want for probe 8.
 [acl]
 enabled = true
 default_policy = "deny"
