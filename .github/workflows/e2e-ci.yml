@@ -138,6 +138,14 @@ jobs:
           sleep 15
           echo "=== datastream-service startup log ==="
           cat /tmp/datastream-service.log
+          echo "=== Child log ==="
+          CHILD_LOG=$(ls -t /Users/runner/.actr/hyper/logs/actr-*.log 2>/dev/null | head -1)
+          if [ -n "$CHILD_LOG" ]; then
+            echo "Child log: $CHILD_LOG"
+            cat "$CHILD_LOG"
+          else
+            echo "(no child log found)"
+          fi
           if ! kill -0 $SERVICE_PID 2>/dev/null; then
             echo "ERROR: datastream-service process exited"
             exit 1
