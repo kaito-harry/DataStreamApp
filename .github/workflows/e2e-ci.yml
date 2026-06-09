@@ -36,6 +36,9 @@ jobs:
       - name: Install xcodegen
         run: brew install xcodegen
 
+      - name: Install runtime dependencies
+        run: brew install libgit2 openssl@3
+
       # ── Start actrix (pre-built binary) ────────────────────
       - name: Start actrix
         run: |
