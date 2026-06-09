@@ -11,7 +11,9 @@ final class ActrService: ObservableObject {
     @Published var errorMessage: String?
     @Published var results: [ProbeResult] = []
     @Published var isRunning = false
+    @Published var isSendingStream = false
     @Published var logLines: [String] = []
+    @Published var receivedEchoLines: [String] = []
 
     private var actrNode: ActrNode?
     private var actorRef: ActrRef?
@@ -64,6 +66,17 @@ final class ActrService: ObservableObject {
         ProcessInfo.processInfo.environment["ACTR_DATASTREAMAPP_AUTO_RUN"] == "1"
     }
 
+    nonisolated var autoStreamCount: Int? {
+        guard let value = ProcessInfo.processInfo.environment["ACTR_DATASTREAMAPP_AUTO_STREAM_COUNT"] else {
+            return nil
+        }
+        return Int(value).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    nonisolated var autoResultFilename: String? {
+        ProcessInfo.processInfo.environment["ACTR_DATASTREAMAPP_AUTO_RESULT_FILE"]
+    }
+
     func runAllProbes() async {
         guard self.actorRef != nil, !hasRun else {
             logger.warning("runAllProbes: actorRef=\(self.actorRef != nil) hasRun=\(self.hasRun)")
@@ -87,6 +100,66 @@ final class ActrService: ObservableObject {
             NSLog("[DataStreamApp] StartProbe RPC failed: \(error)")
         }
         isRunning = false
+    }
+
+    func sendHelloStreamChunks(count: Int) async {
+        guard self.actorRef != nil, !isSendingStream, !isRunning else {
+            logger.warning("sendHelloStreamChunks: actorRef=\(self.actorRef != nil) isSending=\(self.isSendingStream) isRunning=\(self.isRunning)")
+            return
+        }
+        guard count > 0 else {
+            logLines.append("[FAIL] chunk count must be greater than 0")
+            return
+        }
+
+        NSLog("[DataStreamApp] sendHelloStreamChunks: count=\(count)")
+        isSendingStream = true
+        receivedEchoLines = []
+        logLines.append("--- Starting manual stream echo request: count=\(count) ---")
+        defer { isSendingStream = false }
+
+        var req = Local_StartProbeRequest()
+        req.probeName = "stream-echo:\(count)"
+        req.targetType = "demo2:DuplexStreamService:1.0.0"
+
+        do {
+            let resp: Local_StartProbeResponse = try await self.actorRef!.call(
+                req,
+                timeoutMs: streamEchoRequestTimeoutMs(for: count)
+            )
+            logLines.append("StreamEcho response: started=\(resp.started) msg=\(resp.message)")
+        } catch {
+            logLines.append("[FAIL] StreamEcho RPC failed: \(error)")
+            NSLog("[DataStreamApp] StreamEcho RPC failed: \(error)")
+        }
+    }
+
+    func exportLogFile() throws -> URL {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let filename = "DataStreamApp-\(formatter.string(from: Date())).log"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        let body = logLines.joined(separator: "\n") + "\n"
+        try body.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    func writeAutoResultFile(named filename: String) throws {
+        let safeFilename = filename.replacingOccurrences(of: "/", with: "_")
+        let supportURL = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let url = supportURL.appendingPathComponent(safeFilename)
+        let body = logLines.joined(separator: "\n") + "\n"
+        try body.write(to: url, atomically: true, encoding: .utf8)
+        NSLog("[DataStreamApp] wrote auto result file: \(url.path)")
+    }
+
+    private func streamEchoRequestTimeoutMs(for count: Int) -> Int64 {
+        max(60_000, Int64(count) * 2_500 + 60_000)
     }
 
     private func materializeRuntimeConfig() throws -> URL {
@@ -143,7 +216,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         NSLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
 
         // Discover target synchronously so we can return immediately if not found
-        let targetType = try ActrType.fromStringRepr("demo2:DuplexStreamService:1.0.0")
+        let targetType = try ActrType.fromStringRepr(req.targetType.isEmpty ? "demo2:DuplexStreamService:1.0.0" : req.targetType)
         let target: ActrId
         do {
             target = try await ctx.discover(targetType: targetType)
@@ -156,9 +229,26 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
             return resp
         }
 
-        // Run probes synchronously — ctx is only valid inside the handler
         let svc = service
         let runner = DataStreamProbeRunner(ctx: ctx, target: target)
+
+        if let count = streamEchoCount(from: req.probeName) {
+            let result = await runner.runHelloStream(count: count)
+            for line in result.logLines {
+                NSLog("[DataStreamApp] \(line)")
+            }
+            await MainActor.run {
+                svc?.receivedEchoLines = result.receivedLines
+                svc?.logLines.append(contentsOf: result.logLines)
+            }
+
+            var resp = Local_StartProbeResponse()
+            resp.started = result.succeeded
+            resp.message = result.message
+            return resp
+        }
+
+        // Run probes synchronously — ctx is only valid inside the handler
         let allResults = await runner.runAll()
 
         for r in allResults {
@@ -180,6 +270,13 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         resp.started = true
         resp.message = "\(passCount)/\(allResults.count) passed"
         return resp
+    }
+
+    private func streamEchoCount(from probeName: String) -> Int? {
+        let prefix = "stream-echo:"
+        guard probeName.hasPrefix(prefix) else { return nil }
+        let value = String(probeName.dropFirst(prefix.count))
+        return Int(value).flatMap { $0 > 0 ? $0 : nil }
     }
 
     /// Starts a second linked node with unauthorized identity to test ACL rejection.

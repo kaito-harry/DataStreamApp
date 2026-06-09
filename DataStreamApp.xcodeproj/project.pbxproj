@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		2ACBC15E86339C6EAD125802 /* duplex_stream.client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D1AAFFF13C651795C89FF5E /* duplex_stream.client.swift */; };
+		41C6B338E8F52E67F5194B7D /* StreamEchoCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB40797337B5EA758A96B64 /* StreamEchoCollector.swift */; };
 		4A086571B6D0E5632E591357 /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = 85B31CFC9E8D185E9B5C04A4 /* SwiftProtobuf */; };
 		505E539D0131A378F30F5842 /* SessionAckCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53B895AA669038786FA4D68 /* SessionAckCollector.swift */; };
 		63034A7E9AE48C3A53138DAA /* Actr in Frameworks */ = {isa = PBXBuildFile; productRef = A95A8C8034CB9187CEA299D5 /* Actr */; };
@@ -26,6 +27,7 @@
 /* Begin PBXFileReference section */
 		22D9EE0EF3109F0D05EF377F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		5E538738252CE3594EB4D2C8 /* actr.lock.toml */ = {isa = PBXFileReference; path = actr.lock.toml; sourceTree = "<group>"; };
+		5EB40797337B5EA758A96B64 /* StreamEchoCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamEchoCollector.swift; sourceTree = "<group>"; };
 		6DEBC9D85447AE75C27A013A /* ProbeResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProbeResult.swift; sourceTree = "<group>"; };
 		88D7D4587AAE5A184D3E475D /* DataStreamApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DataStreamApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		97C3A6CCF852FB61E986DA2A /* probe.pb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = probe.pb.swift; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				D95BAB5B0C0429EC9119046B /* DataStreamProbeRunner.swift */,
 				6DEBC9D85447AE75C27A013A /* ProbeResult.swift */,
 				D53B895AA669038786FA4D68 /* SessionAckCollector.swift */,
+				5EB40797337B5EA758A96B64 /* StreamEchoCollector.swift */,
 			);
 			path = Probes;
 			sourceTree = "<group>";
@@ -221,6 +224,7 @@
 				FE0BA22074873947E6BE256F /* DataStreamProbeRunner.swift in Sources */,
 				9DBBAC2076085D9172642C35 /* ProbeResult.swift in Sources */,
 				505E539D0131A378F30F5842 /* SessionAckCollector.swift in Sources */,
+				41C6B338E8F52E67F5194B7D /* StreamEchoCollector.swift in Sources */,
 				2ACBC15E86339C6EAD125802 /* duplex_stream.client.swift in Sources */,
 				84E96B503217B5BB50E5940B /* duplex_stream.pb.swift in Sources */,
 				84A6689C273FAB36B09C0E18 /* probe.actor.swift in Sources */,
