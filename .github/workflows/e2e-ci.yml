@@ -158,17 +158,9 @@ jobs:
           xcodegen generate
 
           SIM_NAME="iPhone 17 Pro Max"
-          SIM_UDID=$(xcrun simctl list devices -j | jq --arg name "$SIM_NAME" -r '.devices | to_entries[] | select(.key | startswith("com.apple.CoreSimulator.SimRuntime.iOS")) | .value[] | select(.name == $name and .isAvailable == true) | .udid' | head -1)
-          echo "SIM_UDID=$SIM_UDID"
-          if [ -z "$SIM_UDID" ]; then
-            echo "ERROR: Simulator '$SIM_NAME' not found"
-            xcrun simctl list devices | grep -i "iphone" || true
-            exit 1
-          fi
-
 
           xcodebuild -project DataStreamApp.xcodeproj -scheme DataStreamApp \
-            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -destination "platform=iOS Simulator,name=$SIM_NAME" \
             -derivedDataPath /tmp/dd \
             build > /tmp/xcodebuild.log 2>&1 || {
             echo "=== xcodebuild failed (last 60 lines) ==="
@@ -185,7 +177,7 @@ jobs:
             exit 1
           fi
           echo "APP_PATH=$APP_PATH"
-          echo "sim_udid=$SIM_UDID" >> $GITHUB_OUTPUT
+          echo "sim_name=$SIM_NAME" >> $GITHUB_OUTPUT
           echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
 
       # ── Run probes ──────────────────────────────────────────
@@ -193,17 +185,17 @@ jobs:
         id: probes
         run: |
           HOST_IP="${{ steps.host-ip.outputs.host_ip }}"
-          SIM_UDID="${{ steps.build.outputs.sim_udid }}"
+          SIM_NAME="${{ steps.build.outputs.sim_name }}"
           APP_PATH="${{ steps.build.outputs.app_path }}"
 
-          xcrun simctl boot "$SIM_UDID" || true
-          xcrun simctl bootstatus "$SIM_UDID" -b || sleep 10
-          xcrun simctl install "$SIM_UDID" "$APP_PATH"
+          xcrun simctl boot "$SIM_NAME" || true
+          xcrun simctl bootstatus "$SIM_NAME" -b || sleep 10
+          xcrun simctl install booted "$APP_PATH"
 
           echo "=== Launching DataStreamApp ==="
           SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 \
           SIMCTL_CHILD_ACTR_CI_HOST_IP="$HOST_IP" \
-            xcrun simctl launch --console "$SIM_UDID" com.actrium.DataStreamApp > /tmp/probe-output.log 2>&1 &
+            xcrun simctl launch --console booted com.actrium.DataStreamApp > /tmp/probe-output.log 2>&1 &
           SIMCTL_PID=$!
           echo "simctl PID: $SIMCTL_PID"
 
@@ -262,5 +254,5 @@ jobs:
         if: always()
         run: |
           kill $ACTRIX_PID 2>/dev/null || true
-          xcrun simctl shutdown "${{ steps.build.outputs.sim_udid }}" 2>/dev/null || true
+          xcrun simctl shutdown "${{ steps.build.outputs.sim_name }}" 2>/dev/null || true
           rm -rf /tmp/actrix-ci /tmp/dd
