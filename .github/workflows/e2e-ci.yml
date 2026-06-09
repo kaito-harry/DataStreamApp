@@ -39,7 +39,7 @@ jobs:
       - name: Install runtime dependencies
         run: brew install libgit2 openssl@3
 
-      # ── Start actrix (pre-built binary) ────────────────────
+      # ── Start actrix ────────────────────────────────────────
       - name: Start actrix
         run: |
           chmod +x ci/bin/actrix ci/bin/actr
@@ -61,6 +61,16 @@ jobs:
             sleep 1
           done
 
+          # Register manufacturer key so AIS can verify packages
+          echo "=== Registering MFR key ==="
+          PUBKEY=$(python3 -c "import json; print(json.load(open('ci/dev-pubkey.json'))['public_key'])")
+          NOW=$(date +%s)
+          sqlite3 /tmp/actrix-ci/db/actrix.db << SQL
+          INSERT OR IGNORE INTO mfr (name, public_key, key_id, status, created_at, verified_at)
+          VALUES ('actrium', '$PUBKEY', 'mfr-3c26d99da4503044', 'active', $NOW, $NOW);
+          SQL
+          sqlite3 /tmp/actrix-ci/db/actrix.db "SELECT id, name, key_id, status FROM mfr WHERE name='actrium';"
+
       - name: Create CI realm
         id: realm
         run: |
@@ -77,7 +87,6 @@ jobs:
           REALM_SECRET=$(echo "$RESP" | jq -r '.realm_secret')
           echo "realm_id=$REALM_ID" >> $GITHUB_OUTPUT
           echo "realm_secret=$REALM_SECRET" >> $GITHUB_OUTPUT
-          echo "Realm created: id=$REALM_ID"
 
       # ── Start datastream-service ────────────────────────────
       - name: Start datastream-service
@@ -116,9 +125,6 @@ jobs:
           kind = "static"
           pubkey_file = "$PUBKEY_PATH"
           SVCTOML
-
-          echo "=== Service config ==="
-          cat /tmp/actrix-ci/service-actr.toml
 
           ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1 || {
             echo "=== Child log ==="
