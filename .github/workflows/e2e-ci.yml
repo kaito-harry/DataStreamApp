@@ -157,25 +157,15 @@ jobs:
 
           xcodegen generate
 
-          SIM_NAME="iPhone-17-Pro-Max-CI"
-          SIM_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max"
-          SIM_RUNTIME=$(xcrun simctl list runtimes available | grep -i "ios.*26" | head -1 | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+')
-
-          if [ -z "$SIM_RUNTIME" ]; then
-            echo "ERROR: No iOS 26 runtime found. Available runtimes:"
-            xcrun simctl list runtimes available | grep -i ios || true
-            exit 1
-          fi
-          echo "Using runtime: $SIM_RUNTIME"
-
-          xcrun simctl create "$SIM_NAME" "$SIM_TYPE" "$SIM_RUNTIME" 2>/dev/null || true
-          SIM_UDID=$(xcrun simctl list devices | grep "$SIM_NAME" | head -1 | grep -oE '[A-F0-9]{8}-([A-F0-9]{4}-){3}[A-F0-9]{12}')
+          SIM_NAME="iPhone 17 Pro Max"
+          SIM_UDID=$(xcrun simctl list devices | grep "$SIM_NAME" | head -1 | grep -oE '[A-F0-9]{8}-([A-F0-9]{4}-){3}[A-F0-9]{12}' | head -1)
           echo "SIM_UDID=$SIM_UDID"
           if [ -z "$SIM_UDID" ]; then
-            echo "ERROR: Failed to find or create simulator $SIM_NAME"
-            xcrun simctl list devices | grep -i "iphone.*17" || true
+            echo "ERROR: Simulator '$SIM_NAME' not found"
+            xcrun simctl list devices | grep -i "iphone" || true
             exit 1
           fi
+
 
           xcodebuild -project DataStreamApp.xcodeproj -scheme DataStreamApp \
             -destination "platform=iOS Simulator,id=$SIM_UDID" \
