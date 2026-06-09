@@ -16,7 +16,7 @@ struct ContentView: View {
                         .foregroundStyle(actrService.isReady ? .green : .secondary)
                 }
 
-                // Run All button
+                // Discovery button
                 Button {
                     Task { await actrService.runAllProbes() }
                 } label: {
@@ -25,7 +25,7 @@ struct ContentView: View {
                             ProgressView()
                                 .tint(.white)
                         }
-                        Text(actrService.isRunning ? "Running..." : "Run All")
+                        Text(actrService.isRunning ? "Discovering..." : "Discover Target")
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -87,7 +87,7 @@ struct ContentView: View {
             await actrService.startIfNeeded()
             NSLog("[DataStreamApp] startIfNeeded returned, shouldAutoRun=\(actrService.shouldAutoRun), isReady=\(actrService.isReady)")
             if actrService.shouldAutoRun {
-                // Wait until ACTR node is ready, then run all probes
+                // Wait until ACTR node is ready, then check target discovery.
                 while !actrService.isReady {
                     try? await Task.sleep(nanoseconds: 500_000_000)
                 }

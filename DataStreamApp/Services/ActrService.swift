@@ -4,6 +4,7 @@ import OSLog
 import SwiftUI
 
 private let logger = Logger(subsystem: "com.actrium.DataStreamApp", category: "ActrService")
+private let targetTypeRepr = "demo2:DuplexStreamService:1.0.0"
 
 @MainActor
 final class ActrService: ObservableObject {
@@ -73,11 +74,11 @@ final class ActrService: ObservableObject {
         NSLog("[DataStreamApp] runAllProbes: calling StartProbe RPC...")
         isRunning = true
         results = []
-        logLines = ["--- Starting DataStream probe run ---"]
+        logLines = ["--- Starting target discovery check ---"]
 
         var req = Local_StartProbeRequest()
-        req.probeName = "run-all"
-        req.targetType = "demo2:DuplexStreamService:1.0.0"
+        req.probeName = "discover-target"
+        req.targetType = targetTypeRepr
 
         do {
             let resp: Local_StartProbeResponse = try await self.actorRef!.call(req)
@@ -128,7 +129,7 @@ private enum ActrServiceError: Error {
 // MARK: - ProbeService RPC Handler
 
 /// Implements ProbeServiceHandler.startProbe(req:ctx:).
-/// When this RPC fires, ctx is delivered — discover target then run all probes.
+/// When this RPC fires, ctx is delivered and target discovery is verified.
 private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
     private weak var service: ActrService?
 
@@ -142,43 +143,53 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
     ) async throws -> Local_StartProbeResponse {
         NSLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
 
-        // Discover target synchronously so we can return immediately if not found
-        let targetType = try ActrType.fromStringRepr("demo2:DuplexStreamService:1.0.0")
+        let start = ContinuousClock.now
+        let svc = service
+        let targetType = try ActrType.fromStringRepr(targetTypeRepr)
         let target: ActrId
         do {
             target = try await ctx.discover(targetType: targetType)
             NSLog("[DataStreamApp] Discovered target: \(target.type.toStringRepr())")
         } catch {
+            let ms = elapsedMs(from: ContinuousClock.now - start)
+            let details = "target not found: \(targetTypeRepr)"
+            let result = ProbeResult(
+                name: "discover-target",
+                passed: false,
+                durationMs: ms,
+                details: details,
+                logLines: ["[FAIL] discover-target \(details)", "error=\(error)"]
+            )
             NSLog("[DataStreamApp] ❌ discover failed: \(error)")
+            await MainActor.run {
+                svc?.results = [result]
+                svc?.isRunning = false
+                svc?.logLines.append(contentsOf: result.logLines)
+            }
             var resp = Local_StartProbeResponse()
             resp.started = false
-            resp.message = "discover failed: \(error)"
+            resp.message = details
             return resp
         }
 
-        // Run probes synchronously — ctx is only valid inside the handler
-        let svc = service
-        let runner = DataStreamProbeRunner(ctx: ctx, target: target)
-        let allResults = await runner.runAll()
-
-        for r in allResults {
-            let status = r.passed ? "PASS" : "FAIL"
-            NSLog("[DataStreamApp] [\(status)] \(r.name) (\(r.durationMs)ms): \(r.details)")
-        }
-        let passCount = allResults.filter(\.passed).count
-        NSLog("[DataStreamApp] Done: \(passCount)/\(allResults.count) passed")
-
+        let ms = elapsedMs(from: ContinuousClock.now - start)
+        let result = ProbeResult(
+            name: "discover-target",
+            passed: true,
+            durationMs: ms,
+            details: "found \(target.type.toStringRepr())",
+            logLines: ["[PASS] discover-target target=\(target.type.toStringRepr())"]
+        )
+        NSLog("[DataStreamApp] [PASS] discover-target (\(ms)ms): \(result.details)")
         await MainActor.run {
-            svc?.results = allResults
+            svc?.results = [result]
             svc?.isRunning = false
-            for r in allResults {
-                svc?.logLines.append(contentsOf: r.logLines)
-            }
+            svc?.logLines.append(contentsOf: result.logLines)
         }
 
         var resp = Local_StartProbeResponse()
         resp.started = true
-        resp.message = "\(passCount)/\(allResults.count) passed"
+        resp.message = "target discovered"
         return resp
     }
 

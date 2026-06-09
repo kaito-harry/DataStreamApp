@@ -1,20 +1,21 @@
 # DataStreamApp
 
-iOS SwiftUI App that validates 8 datastream capabilities against the branch-specific DuplexStreamService target.
+iOS SwiftUI App that validates branch-specific DuplexStreamService connectivity.
 
 ## Overview
 
-| Item | dev branch | test branch |
-|------|------------|-------------|
-| Flow | Swift iOS app -> zq actrix -> zq `datastream-service` | Swift iOS app -> hw actrix -> zq `datastream-service-hw` |
-| Actrix | `192.168.212.112:8080` | `124.71.231.251:9080` |
-| Target | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` |
-| Client identity | `actrium:DuplexStreamProbeClient:1.0.0` | `demo2:DuplexStreamProbeClient:1.0.0` |
-| Realm | `1001` | `33554433` |
-| Service home | `/home/actrium/datastream-service` | `/home/actrium/datastream-service-hw` |
-| Deployment target | iOS 26.2+ | iOS 26.2+ |
-| Swift | 6.0 | 6.0 |
-| Dependencies | actr-swift 0.3.3, SwiftProtobuf 1.32+ | actr-swift 0.3.3, SwiftProtobuf 1.32+ |
+| Item | dev branch | test branch | hw-actrix-unknown-service branch |
+|------|------------|-------------|---------------------------------|
+| Flow | Swift iOS app -> zq actrix -> zq `datastream-service` | Swift iOS app -> hw actrix -> zq `datastream-service-hw` | Swift iOS app -> hw actrix -> any registered datastream service |
+| Actrix | `192.168.212.112:8080` | `124.71.231.251:9080` | `124.71.231.251:9080` |
+| Target | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` | `demo2:DuplexStreamService:1.0.0` |
+| Client identity | `actrium:DuplexStreamProbeClient:1.0.0` | `demo2:DuplexStreamProbeClient:1.0.0` | `demo2:DuplexStreamProbeClient:1.0.0` |
+| Realm | `1001` | `33554433` | `33554433` |
+| Service home | `/home/actrium/datastream-service` | `/home/actrium/datastream-service-hw` | Unknown |
+| Success criteria | 8 datastream probes pass | 8 datastream probes pass | Target discovery succeeds |
+| Deployment target | iOS 26.2+ | iOS 26.2+ | iOS 26.2+ |
+| Swift | 6.0 | 6.0 | 6.0 |
+| Dependencies | actr-swift 0.3.3, SwiftProtobuf 1.32+ | actr-swift 0.3.3, SwiftProtobuf 1.32+ | actr-swift 0.3.3, SwiftProtobuf 1.32+ |
 
 ## Project Structure
 
@@ -116,10 +117,12 @@ The app will:
 2. Wait for `actorRef` to become ready
 3. Call local `ProbeService.StartProbe` RPC → handler receives `ContextBridge`
 4. Discover the branch-specific DuplexStreamService via signaling
-5. Run all 8 probes sequentially
+5. Run the branch-specific verification flow
 6. Print `[PASS]` / `[FAIL]` markers to console log
 
 ## 8 Probes
+
+These probes apply to the `dev` and `test` branches. The `hw-actrix-unknown-service` branch stops after target discovery.
 
 | # | Name | What It Validates |
 |---|------|-------------------|
@@ -147,12 +150,14 @@ ContentView → runAllProbes()
       → ProbeServiceWorkload.__dispatch()
         → ProbeHandlerImpl.startProbe(req:ctx:)
           → ctx.discover("<branch-specific DuplexStreamService>")
-          → DataStreamProbeRunner(ctx:target:).runAll()
-            → ctx.callRaw(StartDuplexStream)   [WebRTC RPC]
-            → ctx.registerStream(s2c, callback)
-            → ctx.sendDataStream(c2s, chunks)
-            → ctx.callRaw(FinishDuplexStream)
-            → ctx.unregisterStream(s2c)
+          → branch-specific verification
+            → discovery-only result             [hw-actrix-unknown-service]
+            → DataStreamProbeRunner.runAll()    [dev/test]
+              → ctx.callRaw(StartDuplexStream)  [WebRTC RPC]
+              → ctx.registerStream(s2c, callback)
+              → ctx.sendDataStream(c2s, chunks)
+              → ctx.callRaw(FinishDuplexStream)
+              → ctx.unregisterStream(s2c)
 ```
 
 ### Why Synchronous Execution?
@@ -165,4 +170,4 @@ ContentView → runAllProbes()
 
 ## Known Limitation
 
-The branch-specific remote DuplexStreamService must be running and registered in its realm. If the service is offline, probes 1-7 will fail with timeout (`Unavailable(msg: "Request timeout")`). Probe 8 (ACL) passes independently as it validates the unauthorized path.
+The branch-specific remote DuplexStreamService must be running and registered in its realm. On `hw-actrix-unknown-service`, discovery itself is the whole test: a discovered target is success, and no route candidates means the target was not found.

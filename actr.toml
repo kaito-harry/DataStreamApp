@@ -1,4 +1,4 @@
-# actr.toml — DataStreamApp Linked Runtime Configuration (test environment)
+# actr.toml — DataStreamApp Linked Runtime Configuration (hw actrix)
 #
 # DataStreamApp is linked mode (ActrNode.linked), no actr build.
 # This file is read directly by ActrNode.linked() as runtime config.
