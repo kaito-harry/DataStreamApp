@@ -65,13 +65,11 @@ jobs:
           echo "=== Registering MFR key ==="
           PUBKEY=$(python3 -c "import json; print(json.load(open('ci/dev-pubkey.json'))['public_key'])")
           NOW=$(date +%s)
-          # 10 years from now
           EXPIRES=$((NOW + 315360000))
           sqlite3 /tmp/actrix-ci/db/actrix.db << SQL
           INSERT OR REPLACE INTO mfr (name, public_key, key_id, status, created_at, verified_at, key_expires_at)
           VALUES ('actrium', '$PUBKEY', 'mfr-3c26d99da4503044', 'active', $NOW, $NOW, $EXPIRES);
           SQL
-          echo "MFR key inserted:"
           sqlite3 /tmp/actrix-ci/db/actrix.db "SELECT id, name, key_id, status, datetime(key_expires_at, 'unixepoch') FROM mfr WHERE name='actrium';"
 
       - name: Create CI realm
@@ -94,6 +92,7 @@ jobs:
       # ── Start datastream-service ────────────────────────────
       - name: Start datastream-service
         run: |
+          HOST_IP="${{ steps.host-ip.outputs.host_ip }}"
           REALM_ID="${{ steps.realm.outputs.realm_id }}"
           REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
           PACKAGE_PATH="$(pwd)/ci/datastream-service.actr"
@@ -119,7 +118,7 @@ jobs:
 
           [webrtc]
           force_relay = false
-          stun_urls = ["stun:127.0.0.1:3478"]
+          stun_urls = ["stun:$HOST_IP:3478"]
 
           [package]
           path = "$PACKAGE_PATH"
@@ -128,6 +127,9 @@ jobs:
           kind = "static"
           pubkey_file = "$PUBKEY_PATH"
           SVCTOML
+
+          echo "=== Service config ==="
+          cat /tmp/actrix-ci/service-actr.toml
 
           ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1 || {
             echo "=== Child log ==="
@@ -194,15 +196,18 @@ jobs:
           APP_PATH="${{ steps.build.outputs.app_path }}"
 
           xcrun simctl boot "$SIM_UDID" || true
-          xcrun simctl bootstatus "$SIM_UDID" -b || sleep 5
+          xcrun simctl bootstatus "$SIM_UDID" -b || sleep 10
           xcrun simctl install "$SIM_UDID" "$APP_PATH"
 
+          echo "=== Launching DataStreamApp ==="
           SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 \
           SIMCTL_CHILD_ACTR_CI_HOST_IP="$HOST_IP" \
-            xcrun simctl launch --console "$SIM_UDID" com.actrium.DataStreamApp 2>&1 | tee /tmp/probe-output.log &
+            xcrun simctl launch --console "$SIM_UDID" com.actrium.DataStreamApp > /tmp/probe-output.log 2>&1 &
           SIMCTL_PID=$!
+          echo "simctl PID: $SIMCTL_PID"
 
-          TIMEOUT=120
+          # Wait for "Done:" or timeout (180s - WebRTC needs more time)
+          TIMEOUT=180
           ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
             if grep -q "Done:" /tmp/probe-output.log 2>/dev/null; then
@@ -210,15 +215,21 @@ jobs:
               sleep 2
               break
             fi
+            # Show progress every 30s
+            if [ $((ELAPSED % 30)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+              echo "[${ELAPSED}s] Waiting for probes... log size: $(wc -c < /tmp/probe-output.log)"
+            fi
             sleep 2
             ELAPSED=$((ELAPSED + 2))
           done
+
+          echo "=== Probe output ==="
+          cat /tmp/probe-output.log
 
           kill $SIMCTL_PID 2>/dev/null || true
 
           if [ $ELAPSED -ge $TIMEOUT ]; then
             echo "Timeout: probes did not complete within ${TIMEOUT}s"
-            cat /tmp/probe-output.log
             exit 1
           fi
 
@@ -242,7 +253,6 @@ jobs:
           else
             echo ""
             echo "❌ E2E FAILED: Expected 8/8, got $PASS_COUNT PASS, $FAIL_COUNT FAIL"
-            cat /tmp/probe-output.log
             exit 1
           fi
 
