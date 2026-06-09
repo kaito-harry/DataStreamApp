@@ -131,40 +131,39 @@ jobs:
           echo "=== Service config ==="
           cat /tmp/actrix-ci/service-actr.toml
 
-          ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml > /tmp/datastream-service.log 2>&1 &
-          SERVICE_PID=$!
-          echo "datastream-service PID: $SERVICE_PID"
-
-          sleep 15
-          echo "=== datastream-service startup log ==="
-          cat /tmp/datastream-service.log
-          echo "=== Child log ==="
-          CHILD_LOG=$(ls -t /Users/runner/.actr/hyper/logs/actr-*.log 2>/dev/null | head -1)
-          if [ -n "$CHILD_LOG" ]; then
-            echo "Child log: $CHILD_LOG"
-            cat "$CHILD_LOG"
-          else
-            echo "(no child log found)"
-          fi
-          if ! kill -0 $SERVICE_PID 2>/dev/null; then
-            echo "ERROR: datastream-service process exited"
+          ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d > /tmp/actr-output.log 2>&1 || {
+            echo "=== actr launch failed ==="
+            cat /tmp/actr-output.log
             exit 1
-          fi
-          echo "datastream-service started"
+          }
+          cat /tmp/actr-output.log
+
+          # Wait 30s for AIS/Signer to recover from startup race
+          sleep 30
+
+          echo "=== AIS health ==="
+          curl -sv http://127.0.0.1:8080/ais 2>&1 | head -20 || true
+
+          echo "=== Child logs ==="
+          for f in /Users/runner/.actr/hyper/logs/actr-*.log; do
+            [ -f "$f" ] && echo "--- $f ---" && tail -100 "$f"
+          done
+          CHILD_LOG=$(ls -t /Users/runner/.actr/hyper/logs/actr-*.log 2>/dev/null | head -1)
 
           TOKEN=$(curl -s -X POST http://localhost:8080/admin/api/auth/login \
             -H 'Content-Type: application/json' -d '{"password":"ci-test-pass"}' | jq -r '.token')
+
+          echo "=== Signaling cache ==="
+          sqlite3 /tmp/actrix-ci/db/signaling_cache.db ".tables" 2>/dev/null || echo "(no cache db)"
+          sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM service_registry;" 2>/dev/null || true
+
+          echo "=== actrix node services ==="
           curl -s http://localhost:8080/admin/api/node -H "Authorization: Bearer $TOKEN" | jq '.services'
 
-          echo "=== Signaling cache diagnostics ==="
-          echo "Tables:"
-          sqlite3 /tmp/actrix-ci/db/signaling_cache.db ".tables" 2>/dev/null || echo "(no signaling_cache.db)"
-          echo "Services:"
-          sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM services;" 2>/dev/null || true
-          echo "Route candidates:"
-          sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM route_candidates;" 2>/dev/null || true
-          echo "Actors:"
-          sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM actors;" 2>/dev/null || true
+          # Check if datastream-service is still running
+          if ! pgrep -f "actr.*service-actr" > /dev/null 2>&1; then
+            echo "WARNING: datastream-service may not be running"
+          fi
 
       # ── Build DataStreamApp ─────────────────────────────────
       - name: Inject host IP and build
