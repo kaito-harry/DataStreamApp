@@ -119,6 +119,7 @@ jobs:
           [webrtc]
           force_relay = false
           stun_urls = ["stun:$HOST_IP:3478"]
+          turn_urls = ["turn:$HOST_IP:3478"]
 
           [package]
           path = "$PACKAGE_PATH"
