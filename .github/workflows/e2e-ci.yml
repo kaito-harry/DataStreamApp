@@ -144,6 +144,16 @@ jobs:
             -H 'Content-Type: application/json' -d '{"password":"ci-test-pass"}' | jq -r '.token')
           curl -s http://localhost:8080/admin/api/node -H "Authorization: Bearer $TOKEN" | jq '.services'
 
+          echo "=== Signaling cache diagnostics ==="
+          echo "Tables:"
+          sqlite3 /tmp/actrix-ci/db/signaling_cache.db ".tables" 2>/dev/null || echo "(no signaling_cache.db)"
+          echo "Services:"
+          sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM services;" 2>/dev/null || true
+          echo "Route candidates:"
+          sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM route_candidates;" 2>/dev/null || true
+          echo "Actors:"
+          sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT * FROM actors;" 2>/dev/null || true
+
       # ── Build DataStreamApp ─────────────────────────────────
       - name: Inject host IP and build
         id: build
