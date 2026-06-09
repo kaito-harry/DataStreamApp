@@ -61,15 +61,18 @@ jobs:
             sleep 1
           done
 
-          # Register manufacturer key so AIS can verify packages
+          # Register manufacturer key with far-future expiry
           echo "=== Registering MFR key ==="
           PUBKEY=$(python3 -c "import json; print(json.load(open('ci/dev-pubkey.json'))['public_key'])")
           NOW=$(date +%s)
+          # 10 years from now
+          EXPIRES=$((NOW + 315360000))
           sqlite3 /tmp/actrix-ci/db/actrix.db << SQL
-          INSERT OR IGNORE INTO mfr (name, public_key, key_id, status, created_at, verified_at)
-          VALUES ('actrium', '$PUBKEY', 'mfr-3c26d99da4503044', 'active', $NOW, $NOW);
+          INSERT OR REPLACE INTO mfr (name, public_key, key_id, status, created_at, verified_at, key_expires_at)
+          VALUES ('actrium', '$PUBKEY', 'mfr-3c26d99da4503044', 'active', $NOW, $NOW, $EXPIRES);
           SQL
-          sqlite3 /tmp/actrix-ci/db/actrix.db "SELECT id, name, key_id, status FROM mfr WHERE name='actrium';"
+          echo "MFR key inserted:"
+          sqlite3 /tmp/actrix-ci/db/actrix.db "SELECT id, name, key_id, status, datetime(key_expires_at, 'unixepoch') FROM mfr WHERE name='actrium';"
 
       - name: Create CI realm
         id: realm
