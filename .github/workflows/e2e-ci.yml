@@ -180,9 +180,20 @@ jobs:
           xcodebuild -project DataStreamApp.xcodeproj -scheme DataStreamApp \
             -destination "platform=iOS Simulator,id=$SIM_UDID" \
             -derivedDataPath /tmp/dd \
-            build 2>&1 | tail -20
+            build > /tmp/xcodebuild.log 2>&1 || {
+            echo "=== xcodebuild failed (last 60 lines) ==="
+            tail -60 /tmp/xcodebuild.log
+            exit 1
+          }
+          echo "=== xcodebuild succeeded (last 20 lines) ==="
+          tail -20 /tmp/xcodebuild.log
 
           APP_PATH=$(find /tmp/dd -name "DataStreamApp.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found in /tmp/dd"
+            find /tmp/dd -name "*.app" -type d || true
+            exit 1
+          fi
           echo "APP_PATH=$APP_PATH"
           echo "sim_udid=$SIM_UDID" >> $GITHUB_OUTPUT
           echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
