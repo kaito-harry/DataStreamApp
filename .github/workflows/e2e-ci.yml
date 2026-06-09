@@ -117,10 +117,20 @@ jobs:
           pubkey_file = "ci/dev-pubkey.json"
           SVCTOML
 
-          echo "Service config (realm_id=$REALM_ID):"
+          echo "=== Service config ==="
           cat /tmp/actrix-ci/service-actr.toml
 
-          ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1
+          echo "=== Starting actr run ==="
+          ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d 2>&1 || {
+            echo "=== actr run failed, checking child log ==="
+            # Find the most recent child log
+            CHILD_LOG=$(ls -t /Users/runner/.actr/hyper/logs/actr-*.log 2>/dev/null | head -1)
+            if [ -n "$CHILD_LOG" ]; then
+              echo "Child log: $CHILD_LOG"
+              cat "$CHILD_LOG"
+            fi
+            exit 1
+          }
           echo "datastream-service started"
 
           # Wait for registration
@@ -139,13 +149,11 @@ jobs:
           REALM_ID="${{ steps.realm.outputs.realm_id }}"
           REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
 
-          # Replace placeholders in CI actr.toml template
           sed "s/__HOST_IP__/${HOST_IP}/g; s/__REALM_ID__/${REALM_ID}/g; s/__REALM_SECRET__/${REALM_SECRET}/g" \
             ci/actr-data-stream-app.toml > actr.toml
 
           xcodegen generate
 
-          # Find or create arm64 simulator
           SIM_NAME="iPhone-17-Pro-Max-CI"
           SIM_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max"
           SIM_RUNTIME=$(xcrun simctl list runtimes available | grep -i "ios.*26" | head -1 | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+')
@@ -193,7 +201,6 @@ jobs:
             xcrun simctl launch --console "$SIM_UDID" com.actrium.DataStreamApp 2>&1 | tee /tmp/probe-output.log &
           SIMCTL_PID=$!
 
-          # Wait for "Done:" or timeout (120s)
           TIMEOUT=120
           ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
