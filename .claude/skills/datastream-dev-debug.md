@@ -5,7 +5,9 @@ description: Debug DataStreamApp in dev environment (192.168.212.112:8080), chec
 
 # DataStreamApp Dev Environment Debug
 
-DataStreamApp 连接内网开发 actrix 服务器 `192.168.212.112:8080`，DuplexStreamService 也部署在同一台机器上，可完全管理。
+DataStreamApp `dev` 分支连接内网 zq actrix 服务器 `192.168.212.112:8080`，并访问同机的 `datastream-service`。
+
+`test` 分支连接 hw actrix 服务器 `124.71.231.251:9080`，但目标服务部署在 zq 的 `datastream-service-hw` 目录。
 
 ## Environment
 
@@ -20,6 +22,19 @@ DataStreamApp 连接内网开发 actrix 服务器 `192.168.212.112:8080`，Duple
 | Target ActrType | `actrium:DuplexStreamService:0.1.0` |
 | Client ActrType | `actrium:DuplexStreamProbeClient:1.0.0` |
 | DuplexStreamService Access | ✅ 完全可控 |
+
+## Branch Matrix
+
+| Item | dev | test |
+|------|-----|------|
+| Git branch | `dev` | `test` |
+| Flow | iOS app -> zq actrix -> zq `datastream-service` | iOS app -> hw actrix -> zq `datastream-service-hw` |
+| Actrix | `192.168.212.112:8080` | `124.71.231.251:9080` |
+| Realm ID | `1001` | `33554433` |
+| Target ActrType | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` |
+| Client ActrType | `actrium:DuplexStreamProbeClient:1.0.0` | `demo2:DuplexStreamProbeClient:1.0.0` |
+| Service home | `/home/actrium/datastream-service` | `/home/actrium/datastream-service-hw` |
+| Registry DB | zq `/opt/actrix/database/signaling_cache.db` | hw `/opt/actr-project/actrix/database/signaling_cache.db` |
 
 | Service | URL |
 |---------|-----|
@@ -53,6 +68,35 @@ ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service &
 
 # 5. Verify
 ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr ps'"
+```
+
+## DuplexStreamService Deployment (test target on zq)
+
+`datastream-service-hw` must be a sibling of `datastream-service`:
+
+```
+/home/actrium/datastream-service-hw/
+└── datastream-workload/
+```
+
+Build and start the test target:
+
+```bash
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service-hw/datastream-workload && cargo build --release --features cdylib'"
+
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service-hw/datastream-workload && /home/actrium/actr/target/release/actr build -m manifest-cdylib.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/datastream-service-hw/mfr.keychain.json'"
+
+ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service-hw && /home/actrium/actr/target/release/actr run -c actr.toml -d'"
+```
+
+Verify locally on zq and remotely in hw registry:
+
+```bash
+ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr ps'"
+
+ssh root@124.71.231.251 "sqlite3 /opt/actr-project/actrix/database/signaling_cache.db \
+  \"SELECT actor_manufacturer || ':' || actor_device_name as actor, service_name, actor_realm_id, status, datetime(last_heartbeat_at, 'unixepoch') \
+   FROM service_registry ORDER BY last_heartbeat_at DESC LIMIT 10;\""
 ```
 
 ## Local Debug
@@ -96,4 +140,5 @@ SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" 
 - **"Connection factory returned no connections"** → ICE closed. Service not answering. Check step 3.
 - **"Failed to allocate on turn.Client"** → TURN down. Remove `turn_urls` or fix TURN.
 - **"AIS rejected"** → Signing key issue. Rebuild with correct `-k keychain.json`.
+- **"AIS rejected registration: MFR lookup failed: not found"** → The package manufacturer and signing key are not registered together in hw actrix. For `datastream-service-hw`, the package is `demo2:DuplexStreamService:1.0.0` but may be signed with the zq `actrium` key (`mfr-3f1749919c8db6ec`). Either sign with a registered `demo2` key or add that signing key as a non-revoked historical key for `demo2` in hw actrix `mfr_key_history`.
 - **`simctl launch` env var not passed** → Use `SIMCTL_CHILD_` prefix.

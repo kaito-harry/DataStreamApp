@@ -186,7 +186,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
     private func runAclProbe() async -> ProbeResult? {
         let start = ContinuousClock.now
         do {
-            let unauthorizedType = ActrType(manufacturer: "demo2", name: "UnauthorizedStreamProbeClient", version: "1.0.0")
+            let unauthorizedType = ActrType(manufacturer: "actrium", name: "UnauthorizedStreamProbeClient", version: "1.0.0")
 
             // Create a config with empty ACL
             let configURL = try makeUnauthorizedConfig()
@@ -205,7 +205,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
 
             // Try discover
-            let targetType = ActrType(manufacturer: "demo2", name: "DuplexStreamService", version: "1.0.0")
+            let targetType = ActrType(manufacturer: "actrium", name: "DuplexStreamService", version: "0.1.0")
             if let ctx = adapter.savedCtx {
                 do {
                     _ = try await ctx.discover(targetType: targetType)
@@ -250,14 +250,14 @@ private func makeUnauthorizedConfig() throws -> URL {
 
     let config = """
     [signaling]
-    url = "ws://124.71.231.251:9080/signaling/ws"
+    url = "ws://192.168.212.112:8080/signaling/ws"
 
     [ais_endpoint]
-    url = "http://124.71.231.251:9080/ais"
+    url = "http://192.168.212.112:8080/ais"
 
     [deployment]
-    realm_id = 33554433
-    realm_secret = "rs_CA1ueOmjzSmmd8UCgJeefGoCYWPkj8Oh"
+    realm_id = 1001
+    realm_secret = "rs_TI1u7FdVIrp1giKCd580-Ap42mE7-kmx"
 
     [discovery]
     visible = false
@@ -268,7 +268,7 @@ private func makeUnauthorizedConfig() throws -> URL {
 
     [webrtc]
     force_relay = false
-    stun_urls = ["stun:124.71.231.251:3478"]
+    stun_urls = ["stun:192.168.212.112:3478"]
 
     [hyper]
     data_dir = "\(dataURL.path)"
