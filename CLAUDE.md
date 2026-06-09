@@ -92,7 +92,7 @@ protoc \
 
 ## Environment
 
-| Key | zq-actrix-zq-service branch | test branch | hw-actrix-unknown-service branch |
+| Key | zq-actrix-zq-service branch | hw-actrix-zq-service branch | hw-actrix-unknown-service branch |
 |-----|-------------------------------|-------------|---------------------------------|
 | Flow | Swift iOS app -> zq actrix -> zq `datastream-service` | Swift iOS app -> hw actrix -> zq `datastream-service-hw` | Swift iOS app -> hw actrix -> any registered datastream service |
 | Realm | `1001` | `33554433` | `33554433` |
@@ -145,7 +145,7 @@ curl -s http://124.71.231.251:9080/admin/api/node -H "Authorization: Bearer $TOK
 ## zq Service Homes
 
 `zq-actrix-zq-service` uses `/home/actrium/datastream-service`.
-`test` uses `/home/actrium/datastream-service-hw`, which is deployed on zq but registers into hw actrix.
+`hw-actrix-zq-service` uses `/home/actrium/datastream-service-hw`, which is deployed on zq but registers into hw actrix.
 `hw-actrix-unknown-service` uses hw actrix only. The service host is intentionally unknown; discovery success is the test result.
 
 ## Reference Doc

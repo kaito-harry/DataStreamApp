@@ -3,9 +3,9 @@ name: datastream-test-debug
 description: Debug DataStreamApp in test environment (124.71.231.251:9080), check remote actrix server logs, verify service registration, diagnose WebRTC connectivity. Use when probes fail, service discovery returns nothing, or WebRTC connection issues arise.
 ---
 
-# DataStreamApp Test Debug Skill
+# DataStreamApp HW Actrix ZQ Service Debug Skill
 
-Debug and diagnostic procedures for the `test` branch: Swift iOS app -> hw actrix -> zq `datastream-service-hw`.
+Debug and diagnostic procedures for the `hw-actrix-zq-service` branch: Swift iOS app -> hw actrix -> zq `datastream-service-hw`.
 
 ## Environment
 
@@ -115,9 +115,9 @@ SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" 
 
 ## Environments
 
-| Key | zq-actrix-zq-service | test |
+| Key | zq-actrix-zq-service | hw-actrix-zq-service |
 |-----|-----------------------|------|
-| Git branch | `zq-actrix-zq-service` | `test` |
+| Git branch | `zq-actrix-zq-service` | `hw-actrix-zq-service` |
 | Actrix | `192.168.212.112:8080` | `124.71.231.251:9080` |
 | Realm ID | 1001 | 33554433 |
 | Target type | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` |
@@ -151,7 +151,7 @@ ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service &
 ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr ps'"
 ```
 
-## DataStreamService Deployment (test)
+## DataStreamService Deployment (hw-actrix-zq-service)
 
 Two-layer structure on zq:
 
