@@ -179,7 +179,19 @@ jobs:
 
           xcodegen generate
 
+          # Pick first available iPhone simulator (fallback chain)
           SIM_NAME="iPhone 17 Pro Max"
+          if ! xcrun simctl list devices available "$SIM_NAME" 2>/dev/null | grep -q "$SIM_NAME"; then
+            echo "iPhone 17 Pro Max not available, trying alternatives..."
+            # List all available iPhone simulators and pick the first one
+            SIM_NAME=$(xcrun simctl list devices available iPhone 2>/dev/null | grep -oE 'iPhone [0-9]+( Pro( Max)?)?' | head -1)
+            if [ -z "$SIM_NAME" ]; then
+              echo "ERROR: No iPhone simulator available"
+              xcrun simctl list devices available
+              exit 1
+            fi
+          fi
+          echo "Using simulator: $SIM_NAME"
 
           xcodebuild -project DataStreamApp.xcodeproj -scheme DataStreamApp \
             -destination "platform=iOS Simulator,name=$SIM_NAME" \
