@@ -77,7 +77,7 @@ final class ActrService: ObservableObject {
 
         var req = Local_StartProbeRequest()
         req.probeName = "run-all"
-        req.targetType = "actrium:DuplexStreamService:0.1.0"
+        req.targetType = "actrium:DuplexStreamService"
 
         do {
             let resp: Local_StartProbeResponse = try await self.actorRef!.call(req)
@@ -143,7 +143,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         NSLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
 
         // Discover target synchronously so we can return immediately if not found
-        let targetType = try ActrType.fromStringRepr("actrium:DuplexStreamService:0.1.0")
+        let targetType = try ActrType.fromStringRepr("actrium:DuplexStreamService")
         let target: ActrId
         do {
             target = try await ctx.discover(targetType: targetType)
@@ -213,7 +213,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
 
             // Try discover the same target as the main probe
-            let targetType = try ActrType.fromStringRepr("actrium:DuplexStreamService:0.1.0")
+            let targetType = try ActrType.fromStringRepr("actrium:DuplexStreamService")
             if let ctx = adapter.savedCtx {
                 do {
                     _ = try await ctx.discover(targetType: targetType)
