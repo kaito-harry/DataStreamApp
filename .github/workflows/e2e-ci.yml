@@ -158,7 +158,7 @@ jobs:
           xcodegen generate
 
           SIM_NAME="iPhone 17 Pro Max"
-          SIM_UDID=$(xcodebuild -project DataStreamApp.xcodeproj -scheme DataStreamApp -showdestinations 2>/dev/null | grep "$SIM_NAME" | head -1 | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}')
+          SIM_UDID=$(xcrun simctl list devices -j | jq --arg name "$SIM_NAME" -r '.devices | to_entries[] | select(.key | startswith("com.apple.CoreSimulator.SimRuntime.iOS")) | .value[] | select(.name == $name and .isAvailable == true) | .udid' | head -1)
           echo "SIM_UDID=$SIM_UDID"
           if [ -z "$SIM_UDID" ]; then
             echo "ERROR: Simulator '$SIM_NAME' not found"
