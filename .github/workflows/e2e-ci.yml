@@ -264,8 +264,10 @@ jobs:
           ci/bin/actr run -c /tmp/actrix-ci/service-actr.toml -d > /tmp/actr-restart.log 2>&1
           echo "=== actr run output ==="
           cat /tmp/actr-restart.log
-          echo "Waiting for service to register..."
-          for i in $(seq 1 20); do
+          echo "Waiting 30s for AIS/Signer and service init..."
+          sleep 30
+          echo "Checking if service registered..."
+          for i in $(seq 1 10); do
             sleep 2
             C=$(sqlite3 /tmp/actrix-ci/db/signaling_cache.db "SELECT COUNT(*) FROM service_registry WHERE name='DuplexStreamService' AND status='Available';" 2>/dev/null || echo "0")
             echo "  attempt $i: $C entries"
