@@ -222,13 +222,10 @@ jobs:
           SIM_NAME="${{ steps.build.outputs.sim_name }}"
           APP_PATH="${{ steps.build.outputs.app_path }}"
 
-          # Always restart datastream-service to ensure fresh signaling connection
-          echo "=== Restarting datastream-service ==="
-          pkill -f "actr.*service-actr" 2>/dev/null || true
-          sleep 2
+          # Ensure datastream-service is registered before launching probes
+          echo "=== Starting datastream-service ==="
           REALM_ID="${{ steps.realm.outputs.realm_id }}"
           REALM_SECRET="${{ steps.realm.outputs.realm_secret }}"
-          HOST_IP="${{ steps.host-ip.outputs.host_ip }}"
           cat > /tmp/actrix-ci/service-actr.toml << SVCTOML
           [signaling]
           url = "ws://127.0.0.1:8080/signaling/ws"
