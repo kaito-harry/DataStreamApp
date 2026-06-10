@@ -54,20 +54,20 @@ DataStreamApp `dev` 分支连接内网 zq actrix 服务器 `192.168.212.112:8080
 
 ```bash
 # 1. Update git repo
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/datastream-workload && git pull'"
+ssh actrium@192.168.212.112 "cd /home/actrium/datastream-service/datastream-workload && git pull"
 
 # 2. Build cdylib
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/datastream-workload && cargo build --release --features cdylib'"
+ssh actrium@192.168.212.112 "cd /home/actrium/datastream-service/datastream-workload && cargo build --release --features cdylib"
 
 # 3. Package as .actr
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service/datastream-workload && /home/actrium/actr/target/release/actr build -m manifest.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/echo-service/mfr.keychain.json'"
+ssh actrium@192.168.212.112 "cd /home/actrium/datastream-service/datastream-workload && /home/actrium/actr/target/release/actr build -m manifest.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/echo-service/mfr.keychain.json"
 
 # 4. Stop old, start new
-ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr stop <WID>'"
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service && /home/actrium/actr/target/release/actr run -c actr.toml -d'"
+ssh actrium@192.168.212.112 "/home/actrium/actr/target/release/actr stop <WID>"
+ssh actrium@192.168.212.112 "cd /home/actrium/datastream-service && /home/actrium/actr/target/release/actr run -c actr.toml -d"
 
 # 5. Verify
-ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr ps'"
+ssh actrium@192.168.212.112 "/home/actrium/actr/target/release/actr ps"
 ```
 
 ## DuplexStreamService Deployment (test target on zq)
@@ -82,17 +82,17 @@ ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/act
 Build and start the test target:
 
 ```bash
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service-hw/datastream-workload && cargo build --release --features cdylib'"
+ssh actrium@192.168.212.112 "cd /home/actrium/datastream-service-hw/datastream-workload && cargo build --release --features cdylib"
 
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service-hw/datastream-workload && /home/actrium/actr/target/release/actr build -m manifest-cdylib.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/datastream-service-hw/mfr.keychain.json'"
+ssh actrium@192.168.212.112 "cd /home/actrium/datastream-service-hw/datastream-workload && /home/actrium/actr/target/release/actr build -m manifest-cdylib.toml -t x86_64-unknown-linux-gnu --no-compile -k /home/actrium/datastream-service-hw/mfr.keychain.json"
 
-ssh root@192.168.212.112 "su - actrium -c 'cd /home/actrium/datastream-service-hw && /home/actrium/actr/target/release/actr run -c actr.toml -d'"
+ssh actrium@192.168.212.112 "cd /home/actrium/datastream-service-hw && /home/actrium/actr/target/release/actr run -c actr.toml -d"
 ```
 
 Verify locally on zq and remotely in hw registry:
 
 ```bash
-ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr ps'"
+ssh actrium@192.168.212.112 "/home/actrium/actr/target/release/actr ps"
 
 ssh root@124.71.231.251 "sqlite3 /opt/actr-project/actrix/database/signaling_cache.db \
   \"SELECT actor_manufacturer || ':' || actor_device_name as actor, service_name, actor_realm_id, status, datetime(last_heartbeat_at, 'unixepoch') \
@@ -130,7 +130,7 @@ SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" 
 
 1. **Health**: `curl -s http://192.168.212.112:8080/health`
 2. **Service registered?**: `actr registry discover --endpoint http://192.168.212.112:8080/ais --realm-id 1001 --realm-secret "rs_TI1u7FdVIrp1giKCd580-Ap42mE7-kmx"`
-3. **Service running?**: `ssh root@192.168.212.112 "su - actrium -c '/home/actrium/actr/target/release/actr ps'"`
+3. **Service running?**: `ssh actrium@192.168.212.112 "/home/actrium/actr/target/release/actr ps"`
 4. **Discovery?**: `grep "Discovered" /tmp/dsa_verify.log` → `actrium:DuplexStreamService:0.1.0`
 5. **WebRTC?**: `grep -E "ICE|connected" /tmp/dsa_verify.log`
 

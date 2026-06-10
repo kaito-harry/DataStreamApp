@@ -4,6 +4,8 @@ import SwiftProtobuf
 
 /// Runs 8 datastream probes per STREAM_CAPABILITY_VERIFICATION.zh.md
 final class DataStreamProbeRunner: @unchecked Sendable {
+    typealias StreamEchoLogHandler = @Sendable (_ logLine: String, _ receivedLine: String?) async -> Void
+
     private let ctx: ContextBridge
     private let target: ActrId
 
@@ -55,6 +57,17 @@ final class DataStreamProbeRunner: @unchecked Sendable {
         let sid: String; let c2s: String; let s2c: String; let col: SessionAckCollector
     }
 
+    struct EchoSession {
+        let sid: String; let c2s: String; let s2c: String; let col: StreamEchoCollector
+    }
+
+    struct StreamEchoRunResult {
+        let succeeded: Bool
+        let message: String
+        let receivedLines: [String]
+        let logLines: [String]
+    }
+
     /// Start session per doc: StartDuplexStream → register s2c callback.
     func start(sid: String, mode: Local_StreamPayloadMode, count: UInt32, log: inout [String]) async throws -> Session {
         let c2s = "c2s-\(sid)"
@@ -100,6 +113,166 @@ final class DataStreamProbeRunner: @unchecked Sendable {
             metadata: [.init(key: "session_id", value: sid)], timestampMs: nil)
         try await ctx.sendDataStream(target: target, chunk: chunk, payloadType: pt)
         log.append("Sent seq=\(seq) on \(c2s)")
+    }
+
+    // MARK: - Manual Stream Echo
+
+    func runHelloStream(
+        count: Int,
+        onLog: StreamEchoLogHandler? = nil
+    ) async -> StreamEchoRunResult {
+        var log: [String] = []
+        var session: EchoSession?
+        var receivedLines: [String] = []
+
+        do {
+            guard count > 0 else {
+                throw ProbeError.runtimeError("chunk count must be greater than 0")
+            }
+            guard count <= Int(UInt32.max) else {
+                throw ProbeError.runtimeError("chunk count exceeds UInt32.max")
+            }
+
+            let startLine = "--- Starting manual stream echo: count=\(count) ---"
+            log.append(startLine)
+            await onLog?(startLine, nil)
+
+            let sid = "manual-echo-\(UUID().uuidString)"
+            let beforeStartEcho = log.count
+            let s = try await startEcho(sid: sid, count: UInt32(count), log: &log, onLog: onLog)
+            session = s
+            for line in log.dropFirst(beforeStartEcho) {
+                await onLog?(line, nil)
+            }
+
+            for index in 1...count {
+                let text = "hello \(index)"
+                let chunk = DataStream(
+                    streamId: s.c2s,
+                    sequence: UInt64(index),
+                    payload: Data(text.utf8),
+                    metadata: [
+                        .init(key: "session_id", value: s.sid),
+                        .init(key: "direction", value: "client-to-service"),
+                    ],
+                    timestampMs: nil
+                )
+                try await ctx.sendDataStream(target: target, chunk: chunk, payloadType: .streamReliable)
+                let sentLine = "sent: \(text)"
+                log.append(sentLine)
+                await onLog?(sentLine, nil)
+
+                if index < count {
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+            }
+
+            let timeoutMs = max(Int64(30_000), Int64(count) * 3_000 + 10_000)
+            let chunks = try await s.col.waitForCompletion(timeoutMs: timeoutMs)
+            receivedLines = chunks.map { chunk in
+                let payload = String(data: chunk.payload, encoding: .utf8) ?? "<\(chunk.payload.count) bytes>"
+                let line = StreamEchoCollector.displayLine(payload: payload)
+                log.append("\(line) raw=\(payload)")
+                return line
+            }
+
+            let beforeTeardown = log.count
+            try await teardownEcho(s: s, log: &log)
+            for line in log.dropFirst(beforeTeardown) {
+                await onLog?(line, nil)
+            }
+
+            let succeeded = receivedLines.count == count
+            let message = succeeded ? "received \(receivedLines.count)/\(count)" : "received \(receivedLines.count)/\(count)"
+            let resultLine = succeeded ? "[PASS] manual stream echo \(message)" : "[FAIL] manual stream echo \(message)"
+            log.append(resultLine)
+            await onLog?(resultLine, nil)
+            return StreamEchoRunResult(succeeded: succeeded, message: message, receivedLines: receivedLines, logLines: log)
+        } catch {
+            if let session {
+                let beforeTeardown = log.count
+                try? await teardownEcho(s: session, log: &log)
+                for line in log.dropFirst(beforeTeardown) {
+                    await onLog?(line, nil)
+                }
+            }
+            let failureLine = "[FAIL] manual stream echo failed: \(error)"
+            log.append(failureLine)
+            await onLog?(failureLine, nil)
+            return StreamEchoRunResult(succeeded: false, message: "\(error)", receivedLines: receivedLines, logLines: log)
+        }
+    }
+
+    private func startEcho(
+        sid: String,
+        count: UInt32,
+        log: inout [String],
+        onLog: StreamEchoLogHandler?
+    ) async throws -> EchoSession {
+        let c2s = "c2s-\(sid)"
+        var req = Local_StartDuplexStreamRequest()
+        req.sessionID = sid
+        req.clientToServiceStreamID = c2s
+        req.clientChunkCount = count
+        req.payloadMode = .streamReliable
+        req.note = "DataStreamApp manual stream echo"
+
+        let rd = try await ctx.callRaw(
+            target: target,
+            routeKey: Local_StartDuplexStreamRequest.routeKey,
+            payloadType: .rpcReliable,
+            payload: try req.serializedData(),
+            timeoutMs: 60_000
+        )
+        let resp = try Local_StartDuplexStreamResponse(serializedBytes: rd)
+        log.append("Start: sid=\(resp.sessionID) s2c=\(resp.serviceToClientStreamID) status=\(resp.status)")
+
+        let s2c = resp.serviceToClientStreamID
+        guard !s2c.isEmpty else { throw ProbeError.runtimeError("empty service_to_client_stream_id") }
+
+        let col = StreamEchoCollector(streamId: s2c, expectedCount: Int(count)) { logLine, receivedLine in
+            await onLog?(logLine, receivedLine)
+        }
+        try await ctx.registerStream(streamId: s2c, callback: col)
+        log.append("Registered \(s2c)")
+        return EchoSession(sid: sid, c2s: c2s, s2c: s2c, col: col)
+    }
+
+    private func teardownEcho(s: EchoSession, log: inout [String]) async throws {
+        var firstError: Error?
+
+        do {
+            var req = Local_FinishDuplexStreamRequest()
+            req.sessionID = s.sid
+            req.clientToServiceStreamID = s.c2s
+            req.serviceToClientStreamID = s.s2c
+            let rd = try await ctx.callRaw(
+                target: target,
+                routeKey: Local_FinishDuplexStreamRequest.routeKey,
+                payloadType: .rpcReliable,
+                payload: try req.serializedData(),
+                timeoutMs: 30_000
+            )
+            let resp = try Local_FinishDuplexStreamResponse(serializedBytes: rd)
+            log.append("Finish: sid=\(resp.sessionID) c2sRecv=\(resp.clientChunksReceived) s2cSent=\(resp.serviceChunksSent) status=\(resp.status)")
+        } catch {
+            firstError = error
+            log.append("[FAIL] Finish failed: \(error)")
+        }
+
+        do {
+            try await ctx.unregisterStream(streamId: s.s2c)
+            log.append("Unregistered \(s.s2c)")
+        } catch {
+            log.append("[FAIL] Unregister \(s.s2c) failed: \(error)")
+            if firstError == nil {
+                firstError = error
+            }
+        }
+
+        if let firstError {
+            throw firstError
+        }
     }
 
     // MARK: - Probe 1: payload-type-reliable
