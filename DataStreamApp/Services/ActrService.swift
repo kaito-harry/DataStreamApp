@@ -158,6 +158,13 @@ final class ActrService: ObservableObject {
         NSLog("[DataStreamApp] wrote auto result file: \(url.path)")
     }
 
+    func appendStreamLog(_ line: String, receivedLine: String? = nil) {
+        logLines.append(line)
+        if let receivedLine {
+            receivedEchoLines.append(receivedLine)
+        }
+    }
+
     private func streamEchoRequestTimeoutMs(for count: Int) -> Int64 {
         max(60_000, Int64(count) * 2_500 + 60_000)
     }
@@ -233,13 +240,16 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         let runner = DataStreamProbeRunner(ctx: ctx, target: target)
 
         if let count = streamEchoCount(from: req.probeName) {
-            let result = await runner.runHelloStream(count: count)
+            let result = await runner.runHelloStream(count: count) { line, receivedLine in
+                await MainActor.run {
+                    svc?.appendStreamLog(line, receivedLine: receivedLine)
+                }
+            }
             for line in result.logLines {
                 NSLog("[DataStreamApp] \(line)")
             }
             await MainActor.run {
                 svc?.receivedEchoLines = result.receivedLines
-                svc?.logLines.append(contentsOf: result.logLines)
             }
 
             var resp = Local_StartProbeResponse()

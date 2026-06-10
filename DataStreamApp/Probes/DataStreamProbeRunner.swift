@@ -4,6 +4,8 @@ import SwiftProtobuf
 
 /// Runs 8 datastream probes per STREAM_CAPABILITY_VERIFICATION.zh.md
 final class DataStreamProbeRunner: @unchecked Sendable {
+    typealias StreamEchoLogHandler = @Sendable (_ logLine: String, _ receivedLine: String?) async -> Void
+
     private let ctx: ContextBridge
     private let target: ActrId
 
@@ -113,7 +115,10 @@ final class DataStreamProbeRunner: @unchecked Sendable {
         log.append("Sent seq=\(seq) on \(c2s)")
     }
 
-    func runHelloStream(count: Int) async -> StreamEchoRunResult {
+    func runHelloStream(
+        count: Int,
+        onLog: StreamEchoLogHandler? = nil
+    ) async -> StreamEchoRunResult {
         var log: [String] = []
         var session: EchoSession?
         var receivedLines: [String] = []
@@ -126,10 +131,17 @@ final class DataStreamProbeRunner: @unchecked Sendable {
                 throw ProbeError.runtimeError("chunk count exceeds UInt32.max")
             }
 
-            log.append("--- Starting manual stream echo: count=\(count) ---")
+            let startLine = "--- Starting manual stream echo: count=\(count) ---"
+            log.append(startLine)
+            await onLog?(startLine, nil)
+
             let sid = "manual-echo-\(UUID().uuidString)"
-            let s = try await startEcho(sid: sid, count: UInt32(count), log: &log)
+            let beforeStartEcho = log.count
+            let s = try await startEcho(sid: sid, count: UInt32(count), log: &log, onLog: onLog)
             session = s
+            for line in log.dropFirst(beforeStartEcho) {
+                await onLog?(line, nil)
+            }
 
             for index in 1...count {
                 let text = "hello \(index)"
@@ -144,7 +156,9 @@ final class DataStreamProbeRunner: @unchecked Sendable {
                     timestampMs: nil
                 )
                 try await ctx.sendDataStream(target: target, chunk: chunk, payloadType: .streamReliable)
-                log.append("sent: \(text)")
+                let sentLine = "sent: \(text)"
+                log.append(sentLine)
+                await onLog?(sentLine, nil)
 
                 if index < count {
                     try await Task.sleep(nanoseconds: 2_000_000_000)
@@ -160,21 +174,39 @@ final class DataStreamProbeRunner: @unchecked Sendable {
                 return line
             }
 
+            let beforeTeardown = log.count
             try await teardownEcho(s: s, log: &log)
+            for line in log.dropFirst(beforeTeardown) {
+                await onLog?(line, nil)
+            }
+
             let succeeded = receivedLines.count == count
             let message = succeeded ? "received \(receivedLines.count)/\(count)" : "received \(receivedLines.count)/\(count)"
-            log.append(succeeded ? "[PASS] manual stream echo \(message)" : "[FAIL] manual stream echo \(message)")
+            let resultLine = succeeded ? "[PASS] manual stream echo \(message)" : "[FAIL] manual stream echo \(message)"
+            log.append(resultLine)
+            await onLog?(resultLine, nil)
             return StreamEchoRunResult(succeeded: succeeded, message: message, receivedLines: receivedLines, logLines: log)
         } catch {
             if let session {
+                let beforeTeardown = log.count
                 try? await teardownEcho(s: session, log: &log)
+                for line in log.dropFirst(beforeTeardown) {
+                    await onLog?(line, nil)
+                }
             }
-            log.append("[FAIL] manual stream echo failed: \(error)")
+            let failureLine = "[FAIL] manual stream echo failed: \(error)"
+            log.append(failureLine)
+            await onLog?(failureLine, nil)
             return StreamEchoRunResult(succeeded: false, message: "\(error)", receivedLines: receivedLines, logLines: log)
         }
     }
 
-    private func startEcho(sid: String, count: UInt32, log: inout [String]) async throws -> EchoSession {
+    private func startEcho(
+        sid: String,
+        count: UInt32,
+        log: inout [String],
+        onLog: StreamEchoLogHandler?
+    ) async throws -> EchoSession {
         let c2s = "c2s-\(sid)"
         var req = Local_StartDuplexStreamRequest()
         req.sessionID = sid
@@ -196,7 +228,9 @@ final class DataStreamProbeRunner: @unchecked Sendable {
         let s2c = resp.serviceToClientStreamID
         guard !s2c.isEmpty else { throw ProbeError.runtimeError("empty service_to_client_stream_id") }
 
-        let col = StreamEchoCollector(streamId: s2c, expectedCount: Int(count))
+        let col = StreamEchoCollector(streamId: s2c, expectedCount: Int(count)) { logLine, receivedLine in
+            await onLog?(logLine, receivedLine)
+        }
         try await ctx.registerStream(streamId: s2c, callback: col)
         log.append("Registered \(s2c)")
         return EchoSession(sid: sid, c2s: c2s, s2c: s2c, col: col)

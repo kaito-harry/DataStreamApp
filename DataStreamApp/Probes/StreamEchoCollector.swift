@@ -6,15 +6,24 @@ actor StreamEchoCollector: DataStreamCallback {
     private var chunks: [UInt64: DataStream] = [:]
     private let expectedCount: Int
     private let streamId: String
+    private let onReceive: (@Sendable (_ logLine: String, _ receivedLine: String) async -> Void)?
 
-    init(streamId: String, expectedCount: Int) {
+    init(
+        streamId: String,
+        expectedCount: Int,
+        onReceive: (@Sendable (_ logLine: String, _ receivedLine: String) async -> Void)? = nil
+    ) {
         self.streamId = streamId
         self.expectedCount = expectedCount
+        self.onReceive = onReceive
     }
 
     func onStream(chunk: DataStream, sender: ActrId) async throws {
         guard chunk.streamId == streamId else { return }
         chunks[chunk.sequence] = chunk
+        let payload = String(data: chunk.payload, encoding: .utf8) ?? "<\(chunk.payload.count) bytes>"
+        let line = Self.displayLine(payload: payload)
+        await onReceive?("\(line) raw=\(payload)", line)
     }
 
     var receivedCount: Int { chunks.count }
