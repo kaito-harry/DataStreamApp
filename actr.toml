@@ -4,7 +4,7 @@
 # This file is read directly by ActrNode.linked() as runtime config.
 #
 # Actor type defined in Swift code:
-#   ActrType(manufacturer: "actrium", name: "DuplexStreamProbeClient", version: "1.0.0")
+#   ActrType(manufacturer: "acmeharry", name: "DuplexStreamProbeClient", version: "1.0.0")
 
 [signaling]
 url = "ws://192.168.212.112:8080/signaling/ws"
@@ -32,4 +32,4 @@ turn_urls = ["turn:192.168.212.112:3478"]
 
 [[acl.rules]]
 permission = "allow"
-type = "actrium:DuplexStreamService:0.1.0"
+type = "zqharry:DuplexStreamService:1.0.0"
