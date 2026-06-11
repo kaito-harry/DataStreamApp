@@ -77,13 +77,25 @@ struct ContentView: View {
                     }
 
                     if !actrService.receivedEchoLines.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(actrService.receivedEchoLines.enumerated()), id: \.offset) { _, line in
-                                Text(receivedDisplayText(line))
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 2) {
+                                    ForEach(Array(actrService.receivedEchoLines.enumerated()), id: \.offset) { idx, line in
+                                        Text(receivedDisplayText(line))
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .id(idx)
+                                    }
+                                }
+                            }
+                            .frame(height: 120)
+                            .onChange(of: actrService.receivedEchoLines.count) { _, newCount in
+                                proxy.scrollTo(newCount - 1, anchor: .bottom)
                             }
                         }
+                        .padding(8)
+                        .background(Color(.systemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                 }
 
