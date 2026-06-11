@@ -29,7 +29,7 @@ final class ActrService: ObservableObject {
 
         do {
             let configURL = try materializeRuntimeConfig()
-            let actorType = ActrType(manufacturer: "demo2", name: "DuplexStreamProbeClient", version: "1.0.0")
+            let actorType = ActrType(manufacturer: "zqharry", name: "DuplexStreamProbeClient", version: "1.0.0")
 
             let handler = ProbeHandlerImpl(service: self)
             let workload = DynamicWorkload(
@@ -90,7 +90,7 @@ final class ActrService: ObservableObject {
 
         var req = Local_StartProbeRequest()
         req.probeName = "run-all"
-        req.targetType = "demo2:DuplexStreamService:1.0.0"
+        req.targetType = "zqharry:DuplexStreamService:1.0.0"
 
         do {
             let resp: Local_StartProbeResponse = try await self.actorRef!.call(req)
@@ -120,7 +120,7 @@ final class ActrService: ObservableObject {
 
         var req = Local_StartProbeRequest()
         req.probeName = "stream-echo:\(count)"
-        req.targetType = "demo2:DuplexStreamService:1.0.0"
+        req.targetType = "zqharry:DuplexStreamService:1.0.0"
 
         do {
             let resp: Local_StartProbeResponse = try await self.actorRef!.call(
@@ -223,7 +223,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         NSLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
 
         // Discover target synchronously so we can return immediately if not found
-        let targetType = try ActrType.fromStringRepr(req.targetType.isEmpty ? "demo2:DuplexStreamService:1.0.0" : req.targetType)
+        let targetType = try ActrType.fromStringRepr(req.targetType.isEmpty ? "zqharry:DuplexStreamService:1.0.0" : req.targetType)
         let target: ActrId
         do {
             target = try await ctx.discover(targetType: targetType)
@@ -312,7 +312,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
 
             // Try discover
-            let targetType = ActrType(manufacturer: "demo2", name: "DuplexStreamService", version: "1.0.0")
+            let targetType = ActrType(manufacturer: "zqharry", name: "DuplexStreamService", version: "1.0.0")
             if let ctx = adapter.savedCtx {
                 do {
                     _ = try await ctx.discover(targetType: targetType)
