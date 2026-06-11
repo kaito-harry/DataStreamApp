@@ -4,7 +4,7 @@ import OSLog
 import SwiftUI
 
 private let logger = Logger(subsystem: "com.actrium.DataStreamApp", category: "ActrService")
-private let targetTypeRepr = "demo2:DuplexStreamService:1.0.0"
+private let targetTypeRepr = "zqharry:DuplexStreamService:1.0.0"
 
 @MainActor
 final class ActrService: ObservableObject {
@@ -28,7 +28,7 @@ final class ActrService: ObservableObject {
 
         do {
             let configURL = try materializeRuntimeConfig()
-            let actorType = ActrType(manufacturer: "demo2", name: "DuplexStreamProbeClient", version: "1.0.0")
+            let actorType = ActrType(manufacturer: "zqharry", name: "DuplexStreamProbeClient", version: "1.0.0")
 
             let handler = ProbeHandlerImpl(service: self)
             let workload = DynamicWorkload(
@@ -216,7 +216,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
 
             // Try discover
-            let targetType = ActrType(manufacturer: "demo2", name: "DuplexStreamService", version: "1.0.0")
+            let targetType = ActrType(manufacturer: "zqharry", name: "DuplexStreamService", version: "1.0.0")
             if let ctx = adapter.savedCtx {
                 do {
                     _ = try await ctx.discover(targetType: targetType)
