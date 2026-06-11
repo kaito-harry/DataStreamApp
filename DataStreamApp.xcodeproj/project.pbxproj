@@ -431,7 +431,7 @@
 			repositoryURL = "https://github.com/Actrium/actr-swift-package-sync";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.3.3;
+				minimumVersion = 0.3.6;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
