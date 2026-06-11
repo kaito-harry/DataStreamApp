@@ -34,7 +34,7 @@ DataStreamApp `dev` 分支连接内网 zq actrix 服务器 `192.168.212.112:8080
 | Target ActrType | `actrium:DuplexStreamService:0.1.0` | `demo2:DuplexStreamService:1.0.0` |
 | Client ActrType | `actrium:DuplexStreamProbeClient:1.0.0` | `demo2:DuplexStreamProbeClient:1.0.0` |
 | Service home | `/home/actrium/datastream-service` | `/home/actrium/datastream-service-hw` |
-| Registry DB | zq `/opt/actrix/database/signaling_cache.db` | hw `/opt/actr-project/actrix/database/signaling_cache.db` |
+| Registry DB | zq `/home/actrium/actrix/database/signaling_cache.db` | hw `/opt/actr-project/actrix/database/signaling_cache.db` |
 
 | Service | URL |
 |---------|-----|
@@ -44,6 +44,21 @@ DataStreamApp `dev` 分支连接内网 zq actrix 服务器 `192.168.212.112:8080
 | Admin UI | `http://192.168.212.112:8080/admin` (password: `719b0e78658ea2b2`) |
 | STUN | `stun:192.168.212.112:3478` |
 | TURN | `turn:192.168.212.112:3478` |
+
+## Actrix
+
+```
+/home/actrium/actrix/     ← 源码 + 构建 + 部署一体
+├── src/
+├── target/release/actrix ← 编译产物即二进制
+├── config.toml           ← 运行时配置
+└── database/             ← signaling_cache.db 等
+```
+
+```bash
+# 更新 + 构建 + 重启（lto = "thin"，约 3 分钟）
+ssh actrium@192.168.212.112 "cd /home/actrium/actrix && git pull origin main && cargo build --release && sudo systemctl restart actrix"
+```
 
 ## DuplexStreamService Deployment
 
@@ -129,7 +144,7 @@ SIMCTL_CHILD_ACTR_DATASTREAMAPP_AUTO_RUN=1 xcrun simctl launch --console "$DEV" 
 ## Diagnostic Flow
 
 1. **Health**: `curl -s http://192.168.212.112:8080/health`
-2. **Service registered?**: `actr registry discover --endpoint http://192.168.212.112:8080/ais --realm-id 1001 --realm-secret "rs_TI1u7FdVIrp1giKCd580-Ap42mE7-kmx"`
+2. **Service registered?**: `ssh actrium@192.168.212.112 "sqlite3 /home/actrium/actrix/database/signaling_cache.db \"SELECT service_name, datetime(last_heartbeat_at,'unixepoch') FROM service_registry ORDER BY last_heartbeat_at DESC LIMIT 10;\""`
 3. **Service running?**: `ssh actrium@192.168.212.112 "/home/actrium/actr/target/release/actr ps"`
 4. **Discovery?**: `grep "Discovered" /tmp/dsa_verify.log` → `actrium:DuplexStreamService:0.1.0`
 5. **WebRTC?**: `grep -E "ICE|connected" /tmp/dsa_verify.log`

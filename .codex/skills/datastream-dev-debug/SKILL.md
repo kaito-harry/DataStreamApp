@@ -35,7 +35,10 @@ $SSH "ps aux | grep actr | grep -v grep"
 
 # Check actrix
 $SSH "curl -s http://192.168.212.112:8080/health"
-$SSH "sqlite3 /opt/actrix/database/signaling_cache.db \"SELECT service_name, datetime(last_heartbeat_at,'unixepoch') FROM service_registry ORDER BY last_heartbeat_at DESC LIMIT 10;\""
+$SSH "sqlite3 /home/actrium/actrix/database/signaling_cache.db \"SELECT service_name, datetime(last_heartbeat_at,'unixepoch') FROM service_registry ORDER BY last_heartbeat_at DESC LIMIT 10;\""
+
+# Update actrix + restart (lto = "thin", ~3 min build)
+$SSH "cd /home/actrium/actrix && git pull origin main && cargo build --release && sudo systemctl restart actrix"
 
 # Start datastream-service (zq-actrix-zq-service branch)
 $SSH "cd /home/actrium/datastream-service && RUST_LOG=info nohup /home/actrium/actr/target/release/actr run --config actr.toml > /tmp/ds-run.log 2>&1 &"
