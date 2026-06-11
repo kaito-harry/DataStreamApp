@@ -149,3 +149,53 @@ curl -s http://124.71.231.251:9080/admin/api/node -H "Authorization: Bearer $TOK
 ## Reference Doc
 
 [STREAM_CAPABILITY_VERIFICATION.zh.md](http://10.30.2.226:6419/4c71bac9/STREAM_CAPABILITY_VERIFICATION.zh.md)
+
+## actr-swift-package-sync 版本与 API 对照
+
+### 仓库关系
+
+```
+Actrium/actr (源码仓库, Rust + Swift bindings)
+    │  CI 构建 XCFramework → 发布 Release
+    ▼
+Actrium/actr-swift-package-sync (二进制分发仓库)
+    │  SPM 依赖解析
+    ▼
+EchoApp/DataStreamApp (iOS App)
+```
+
+- **源码仓库**: `github.com/Actrium/actr` — 真正的 tag 在这里，包含完整 Swift binding 源码
+- **分发仓库**: `github.com/Actrium/actr-swift-package-sync` — 只有 Release（含 `ActrFFI.xcframework.zip`），tag 和 Release 由 CI 自动创建
+- **SPM checkout 可能 shallow**: 本地 `git ls-remote --tags` 可能不全，以 GitHub Release 列表为准
+
+### API 存在性对照表
+
+| API | v0.2.1 | v0.3.0 | v0.3.1 | v0.3.3 | v0.3.4 | v0.3.6 |
+|-----|:------:|:------:|:------:|:------:|:------:|:------:|
+| `ActrNode.resolveManifestPackageActrType` | ✅ 静态方法 | ❌ | ❌ | ? | ? | — |
+| `resolveManifestPackageActrType` (顶层函数) | — | ❌ | ❌ | ? | ? | ✅ |
+| `ActrNode.resolveManifestDependencyAliasList` | ✅ 静态方法 | ❌ | ❌ | ? | ? | ? |
+| `ActrNode.resolveManifestDependency` | ✅ 静态方法 | ✅ 静态方法 | ✅ 静态方法 | ✅ | ✅ | — |
+| `resolveManifestDependency` (顶层函数) | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+> `?` = 未经本地验证，以源码仓库 `Actrium/actr` 对应 tag 中的实际代码为准
+
+### 查 API 的正确方式
+
+```bash
+# 不要依赖本地 SPM checkout 的源码（可能版本不对齐）
+# 直接从源仓库查对应 tag 的代码：
+
+gh api "/repos/Actrium/actr/contents/bindings/swift/Sources/Actr/ActrNode.swift?ref=v0.3.6"
+gh api "/repos/Actrium/actr/contents/bindings/swift/ActrBindings/Actr.swift?ref=v0.3.6"
+
+# 查看所有 release（包含最新版本）
+gh release list -R Actrium/actr-swift-package-sync --limit 10
+```
+
+### 已知坑
+
+1. **SPM checkout 源码 ≠ 实际链接的二进制版本**: `Package.swift` 中的 `releaseTag` 决定下载哪个 `ActrFFI.xcframework.zip`，但 SPM checkout 的 Swift 源码可能来自不同的 tag，导致 API 不匹配
+2. **v0.3.0 → v0.3.4 期间**: `resolveManifestPackageActrType` 和 `resolveManifestDependencyAliasList` 被移除，`resolveManifestDependency` 从顶层函数变为 `ActrNode` 静态方法
+3. **v0.3.6**: `resolveManifestPackageActrType` 作为顶层函数恢复，但 `ActrNode` 静态包装不再存在
+4. **临时 workaround**: 当 `resolveManifestPackageActrType` 不可用时，手动解析 `manifest.toml` 的 `[package]` section 构建 `ActrType(manufacturer:name:version:)`
