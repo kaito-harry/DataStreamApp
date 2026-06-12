@@ -4,6 +4,12 @@ import Foundation
 import OSLog
 import SwiftUI
 
+// MARK: - Constants
+
+private let maxLogLines = 2000
+private let maxReceivedEchoLines = 200
+private let maxFileLogSize: UInt64 = 20 * 1024 * 1024  // 20 MB
+
 // MARK: - File Logger (for device log capture)
 
 private let fileLogURL: URL = {
@@ -17,9 +23,18 @@ private func fileLog(_ message: String) {
     let timestamp = ISO8601DateFormatter().string(from: Date())
     let line = "[\(timestamp)] \(message)\n"
     NSLog("\(message)")
-    if let data = line.data(using: .utf8) {
-        try? fileLogHandle?.write(contentsOf: data)
-        try? fileLogHandle?.synchronize()
+    guard let data = line.data(using: .utf8) else { return }
+    do {
+        if let handle = fileLogHandle {
+            let offset = try handle.offset()
+            if offset > maxFileLogSize {
+                try handle.truncate(atOffset: 0)
+            }
+        }
+        try fileLogHandle?.write(contentsOf: data)
+        try fileLogHandle?.synchronize()
+    } catch {
+        NSLog("[DataStreamApp] ⚠️ fileLog write failed: \(error)")
     }
 }
 
@@ -51,7 +66,7 @@ private final class ActrLogHandler: LogCallback, @unchecked Sendable {
         let entry = "[actr|\(level)] \(target): \(message)"
         fileLog(entry)
         DispatchQueue.main.async { [weak self] in
-            self?.service?.logLines.append(entry)
+            self?.service?.appendBoundedLog(entry)
         }
     }
 }
@@ -152,9 +167,9 @@ final class ActrService: ObservableObject {
 
         do {
             let resp: Local_StartProbeResponse = try await self.actorRef!.call(req)
-            logLines.append("StartProbe response: started=\(resp.started) msg=\(resp.message)")
+            appendBoundedLog("StartProbe response: started=\(resp.started) msg=\(resp.message)")
         } catch {
-            logLines.append("[FAIL] StartProbe RPC failed: \(error)")
+            appendBoundedLog("[FAIL] StartProbe RPC failed: \(error)")
             fileLog("[DataStreamApp] StartProbe RPC failed: \(error)")
         }
         isRunning = false
@@ -166,14 +181,14 @@ final class ActrService: ObservableObject {
             return
         }
         guard count > 0 else {
-            logLines.append("[FAIL] chunk count must be greater than 0")
+            appendBoundedLog("[FAIL] chunk count must be greater than 0")
             return
         }
 
         fileLog("[DataStreamApp] sendHelloStreamChunks: count=\(count)")
         isSendingStream = true
         receivedEchoLines = []
-        logLines.append("--- Starting manual stream echo request: count=\(count) ---")
+        appendBoundedLog("--- Starting manual stream echo request: count=\(count) ---")
         defer { isSendingStream = false }
 
         var req = Local_StartProbeRequest()
@@ -185,9 +200,9 @@ final class ActrService: ObservableObject {
                 req,
                 timeoutMs: streamEchoRequestTimeoutMs(for: count)
             )
-            logLines.append("StreamEcho response: started=\(resp.started) msg=\(resp.message)")
+            appendBoundedLog("StreamEcho response: started=\(resp.started) msg=\(resp.message)")
         } catch {
-            logLines.append("[FAIL] StreamEcho RPC failed: \(error)")
+            appendBoundedLog("[FAIL] StreamEcho RPC failed: \(error)")
             fileLog("[DataStreamApp] StreamEcho RPC failed: \(error)")
         }
     }
@@ -216,10 +231,20 @@ final class ActrService: ObservableObject {
         fileLog("[DataStreamApp] wrote auto result file: \(url.path)")
     }
 
+    func appendBoundedLog(_ line: String) {
+        appendBoundedLog(line)
+        if logLines.count > maxLogLines {
+            logLines.removeFirst(logLines.count - maxLogLines)
+        }
+    }
+
     func appendStreamLog(_ line: String, receivedLine: String? = nil) {
-        logLines.append(line)
+        appendBoundedLog(line)
         if let receivedLine {
             receivedEchoLines.append(receivedLine)
+            if receivedEchoLines.count > maxReceivedEchoLines {
+                receivedEchoLines.removeFirst(receivedEchoLines.count - maxReceivedEchoLines)
+            }
         }
     }
 
@@ -326,7 +351,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
             svc?.results = allResults
             svc?.isRunning = false
             for r in allResults {
-                svc?.logLines.append(contentsOf: r.logLines)
+                for line in r.logLines { svc?.appendBoundedLog(line) }
             }
         }
 
