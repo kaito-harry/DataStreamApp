@@ -1,7 +1,75 @@
 import Actr
+import ActrBindings
 import Foundation
 import OSLog
 import SwiftUI
+
+// MARK: - Constants
+
+private let maxLogLines = 2000
+private let maxReceivedEchoLines = 200
+private let maxFileLogSize: UInt64 = 20 * 1024 * 1024  // 20 MB
+
+// MARK: - File Logger
+
+private let fileLogURL: URL = {
+    let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    return docs.appendingPathComponent("datastream_app.log")
+}()
+
+nonisolated(unsafe) private var fileLogHandle: FileHandle?
+
+private func fileLog(_ message: String) {
+    let timestamp = ISO8601DateFormatter().string(from: Date())
+    let line = "[\(timestamp)] \(message)\n"
+    NSLog("\(message)")
+    guard let data = line.data(using: .utf8) else { return }
+    do {
+        if let handle = fileLogHandle {
+            // Rotate if over limit
+            let offset = try handle.offset()
+            if offset > maxFileLogSize {
+                try handle.truncate(atOffset: 0)
+            }
+        }
+        try fileLogHandle?.write(contentsOf: data)
+        try fileLogHandle?.synchronize()
+    } catch {
+        NSLog("[DataStreamApp] ⚠️ fileLog write failed: \(error)")
+    }
+}
+
+private func setupFileLog() {
+    let url = fileLogURL
+    if !FileManager.default.fileExists(atPath: url.path) {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+    }
+    if let handle = try? FileHandle(forWritingTo: url) {
+        try? handle.seekToEnd()
+        fileLogHandle = handle
+        fileLog("[DataStreamApp] 📝 File log started at \(url.path)")
+    } else {
+        fileLog("[DataStreamApp] ⚠️ Failed to open file log handle at \(url.path)")
+    }
+}
+
+// MARK: - Actr Rust Log Forwarding
+
+private final class ActrLogHandler: LogCallback, @unchecked Sendable {
+    private weak var service: ActrService?
+
+    init(service: ActrService) {
+        self.service = service
+    }
+
+    func onLog(level: String, target: String, message: String, timestampMs: Int64) {
+        let entry = "[actr|\(level)] \(target): \(message)"
+        fileLog(entry)
+        DispatchQueue.main.async { [weak self] in
+            self?.service?.appendBoundedLog(entry)
+        }
+    }
+}
 
 private let logger = Logger(subsystem: "com.actrium.DataStreamApp", category: "ActrService")
 
@@ -15,7 +83,7 @@ final class ActrService: ObservableObject {
     @Published var logLines: [String] = []
     @Published var receivedEchoLines: [String] = []
 
-    private var actrNode: ActrNode?
+    private var actrNode: Actr.ActrNode?
     private var actorRef: ActrRef?
     private var isStarting = false
     private var hasRun = false
@@ -27,9 +95,11 @@ final class ActrService: ObservableObject {
         isStarting = true
         defer { isStarting = false }
 
+        setupFileLog()
+
         do {
             let configURL = try materializeRuntimeConfig()
-            let actorType = ActrType(manufacturer: "zqharry", name: "DuplexStreamProbeClient", version: "1.0.0")
+            let actorType = ActrType(manufacturer: "acmeharry", name: "DuplexStreamProbeClient", version: "1.0.0")
 
             let handler = ProbeHandlerImpl(service: self)
             let workload = DynamicWorkload(
@@ -41,17 +111,19 @@ final class ActrService: ObservableObject {
                 mailbox: nil
             )
 
-            let node = try await ActrNode.linked(config: configURL, type: actorType, workload: workload)
+            setLogCallback(callback: ActrLogHandler(service: self))
+
+            let node = try await Actr.ActrNode.linked(config: configURL, type: actorType, workload: workload)
             let ref = try await node.start()
 
             actrNode = node
             actorRef = ref
             status = "Ready: \(actorType.toStringRepr())"
-            NSLog("[DataStreamApp] ✅ node started")
+            fileLog("[DataStreamApp] ✅ node started")
         } catch {
             status = "ACTR startup failed: \(error)"
             errorMessage = String(describing: error)
-            NSLog("[DataStreamApp] ❌ Startup failed: \(error)")
+            fileLog("[DataStreamApp] ❌ Startup failed: \(error)")
         }
     }
 
@@ -83,7 +155,7 @@ final class ActrService: ObservableObject {
             return
         }
         hasRun = true
-        NSLog("[DataStreamApp] runAllProbes: calling StartProbe RPC...")
+        fileLog("[DataStreamApp] runAllProbes: calling StartProbe RPC...")
         isRunning = true
         results = []
         logLines = ["--- Starting DataStream probe run ---"]
@@ -94,10 +166,10 @@ final class ActrService: ObservableObject {
 
         do {
             let resp: Local_StartProbeResponse = try await self.actorRef!.call(req)
-            logLines.append("StartProbe response: started=\(resp.started) msg=\(resp.message)")
+            appendBoundedLog("StartProbe response: started=\(resp.started) msg=\(resp.message)")
         } catch {
-            logLines.append("[FAIL] StartProbe RPC failed: \(error)")
-            NSLog("[DataStreamApp] StartProbe RPC failed: \(error)")
+            appendBoundedLog("[FAIL] StartProbe RPC failed: \(error)")
+            fileLog("[DataStreamApp] StartProbe RPC failed: \(error)")
         }
         isRunning = false
     }
@@ -108,14 +180,14 @@ final class ActrService: ObservableObject {
             return
         }
         guard count > 0 else {
-            logLines.append("[FAIL] chunk count must be greater than 0")
+            appendBoundedLog("[FAIL] chunk count must be greater than 0")
             return
         }
 
-        NSLog("[DataStreamApp] sendHelloStreamChunks: count=\(count)")
+        fileLog("[DataStreamApp] sendHelloStreamChunks: count=\(count)")
         isSendingStream = true
         receivedEchoLines = []
-        logLines.append("--- Starting manual stream echo request: count=\(count) ---")
+        appendBoundedLog("--- Starting manual stream echo request: count=\(count) ---")
         defer { isSendingStream = false }
 
         var req = Local_StartProbeRequest()
@@ -127,10 +199,10 @@ final class ActrService: ObservableObject {
                 req,
                 timeoutMs: streamEchoRequestTimeoutMs(for: count)
             )
-            logLines.append("StreamEcho response: started=\(resp.started) msg=\(resp.message)")
+            appendBoundedLog("StreamEcho response: started=\(resp.started) msg=\(resp.message)")
         } catch {
-            logLines.append("[FAIL] StreamEcho RPC failed: \(error)")
-            NSLog("[DataStreamApp] StreamEcho RPC failed: \(error)")
+            appendBoundedLog("[FAIL] StreamEcho RPC failed: \(error)")
+            fileLog("[DataStreamApp] StreamEcho RPC failed: \(error)")
         }
     }
 
@@ -155,13 +227,23 @@ final class ActrService: ObservableObject {
         let url = supportURL.appendingPathComponent(safeFilename)
         let body = logLines.joined(separator: "\n") + "\n"
         try body.write(to: url, atomically: true, encoding: .utf8)
-        NSLog("[DataStreamApp] wrote auto result file: \(url.path)")
+        fileLog("[DataStreamApp] wrote auto result file: \(url.path)")
+    }
+
+    func appendBoundedLog(_ line: String) {
+        logLines.append(line)
+        if logLines.count > maxLogLines {
+            logLines.removeFirst(logLines.count - maxLogLines)
+        }
     }
 
     func appendStreamLog(_ line: String, receivedLine: String? = nil) {
-        logLines.append(line)
+        appendBoundedLog(line)
         if let receivedLine {
             receivedEchoLines.append(receivedLine)
+            if receivedEchoLines.count > maxReceivedEchoLines {
+                receivedEchoLines.removeFirst(receivedEchoLines.count - maxReceivedEchoLines)
+            }
         }
     }
 
@@ -220,16 +302,16 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
         req: Local_StartProbeRequest,
         ctx: Context
     ) async throws -> Local_StartProbeResponse {
-        NSLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
+        fileLog("[DataStreamApp] 🔵 startProbe handler, discovering DuplexStreamService...")
 
         // Discover target synchronously so we can return immediately if not found
         let targetType = try ActrType.fromStringRepr(req.targetType.isEmpty ? "zqharry:DuplexStreamService:1.0.0" : req.targetType)
         let target: ActrId
         do {
             target = try await ctx.discover(targetType: targetType)
-            NSLog("[DataStreamApp] Discovered target: \(target.type.toStringRepr())")
+            fileLog("[DataStreamApp] Discovered target: \(target.type.toStringRepr())")
         } catch {
-            NSLog("[DataStreamApp] ❌ discover failed: \(error)")
+            fileLog("[DataStreamApp] ❌ discover failed: \(error)")
             var resp = Local_StartProbeResponse()
             resp.started = false
             resp.message = "discover failed: \(error)"
@@ -246,7 +328,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
                 }
             }
             for line in result.logLines {
-                NSLog("[DataStreamApp] \(line)")
+                fileLog("[DataStreamApp] \(line)")
             }
             await MainActor.run {
                 svc?.receivedEchoLines = result.receivedLines
@@ -263,16 +345,16 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
 
         for r in allResults {
             let status = r.passed ? "PASS" : "FAIL"
-            NSLog("[DataStreamApp] [\(status)] \(r.name) (\(r.durationMs)ms): \(r.details)")
+            fileLog("[DataStreamApp] [\(status)] \(r.name) (\(r.durationMs)ms): \(r.details)")
         }
         let passCount = allResults.filter(\.passed).count
-        NSLog("[DataStreamApp] Done: \(passCount)/\(allResults.count) passed")
+        fileLog("[DataStreamApp] Done: \(passCount)/\(allResults.count) passed")
 
         await MainActor.run {
             svc?.results = allResults
             svc?.isRunning = false
             for r in allResults {
-                svc?.logLines.append(contentsOf: r.logLines)
+                for line in r.logLines { svc?.appendBoundedLog(line) }
             }
         }
 
@@ -293,7 +375,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
     private func runAclProbe() async -> ProbeResult? {
         let start = ContinuousClock.now
         do {
-            let unauthorizedType = ActrType(manufacturer: "demo2", name: "UnauthorizedStreamProbeClient", version: "1.0.0")
+            let unauthorizedType = ActrType(manufacturer: "acmeharry", name: "UnauthorizedStreamProbeClient", version: "1.0.0")
 
             // Create a config with empty ACL
             let configURL = try makeUnauthorizedConfig()
@@ -305,7 +387,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
                 signaling: nil, websocket: nil, webrtc: nil, credential: nil, mailbox: nil
             )
 
-            let node = try await ActrNode.linked(config: configURL, type: unauthorizedType, workload: workload)
+            let node = try await Actr.ActrNode.linked(config: configURL, type: unauthorizedType, workload: workload)
             let ref = try await node.start()
 
             // Wait a moment for onReady
@@ -324,7 +406,7 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
                     // Expected: discovery fails
                     await ref.stop()
                     let ms = elapsedMs(from: ContinuousClock.now - start)
-                    NSLog("[DataStreamApp] ACL probe: unauthorized discovery rejected: \(error)")
+                    fileLog("[DataStreamApp] ACL probe: unauthorized discovery rejected: \(error)")
                     return ProbeResult(name: "acl-rejects-unauthorized-client", passed: true, durationMs: ms, details: "Rejected: \(error.localizedDescription)", logLines: ["PASS acl-rejects-unauthorized-client error=failed to discover DuplexStreamService"])
                 }
             } else {
@@ -337,10 +419,10 @@ private final class ProbeHandlerImpl: ProbeServiceHandler, @unchecked Sendable {
             // If the node itself fails to start, that's also an ACL pass (unauthorized identity rejected)
             let errStr = String(describing: error)
             if errStr.contains("Forbidden") || errStr.contains("rejected") || errStr.contains("unauthorized") || errStr.contains("ACL") {
-                NSLog("[DataStreamApp] ACL probe: unauthorized node rejected at start: \(error)")
+                fileLog("[DataStreamApp] ACL probe: unauthorized node rejected at start: \(error)")
                 return ProbeResult(name: "acl-rejects-unauthorized-client", passed: true, durationMs: ms, details: "Rejected at start: \(errStr)", logLines: ["PASS acl-rejects-unauthorized-client error=failed to start unauthorized client"])
             }
-            NSLog("[DataStreamApp] ACL probe error: \(error)")
+            fileLog("[DataStreamApp] ACL probe error: \(error)")
             return ProbeResult(name: "acl-rejects-unauthorized-client", passed: false, durationMs: ms, details: "Error: \(errStr)", logLines: ["FAIL: \(errStr)"])
         }
     }
@@ -417,7 +499,7 @@ private final class ProbeLifecycleAdapter: Workload, @unchecked Sendable {
     func onStop(ctx: ContextBridge) async throws {}
 
     func onError(ctx: ContextBridge, event: ErrorEventBridge) async throws {
-        NSLog("[DataStreamApp] ProbeLifecycleAdapter error: \(event)")
+        fileLog("[DataStreamApp] ProbeLifecycleAdapter error: \(event)")
     }
 
     func dispatch(ctx: ContextBridge, envelope: RpcEnvelopeBridge) async throws -> Data {
